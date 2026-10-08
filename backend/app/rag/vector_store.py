@@ -17,6 +17,9 @@ import logging
 import uuid
 from typing import List, Optional
 
+import os
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
