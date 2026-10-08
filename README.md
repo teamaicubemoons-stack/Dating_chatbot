@@ -1,6 +1,6 @@
 ---
 title: Spark Dating AI Chatbot
-emoji: ✦
+emoji: 💬
 colorFrom: purple
 colorTo: pink
 sdk: docker
