@@ -37,10 +37,10 @@ COPY --chown=user:user backend/ ./backend/
 # Copy built frontend assets
 COPY --chown=user:user --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Expose port 7860 for Hugging Face Spaces
+# Expose port (default 7860, or dynamic PORT on cloud platforms like Render)
 EXPOSE 7860
 
 WORKDIR $HOME/app/backend
 
-# Start FastAPI application on port 7860
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860"]
+# Start FastAPI application
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-7860}"]
