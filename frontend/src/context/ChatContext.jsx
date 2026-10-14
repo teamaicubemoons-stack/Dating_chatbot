@@ -13,7 +13,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { sendMessage, getChatHistory } from '../services/api';
+import { sendMessage, getChatHistory, clearChatConversation } from '../services/api';
 
 const ChatContext = createContext(null);
 
@@ -35,6 +35,7 @@ export function ChatProvider({ children }) {
   const [activeProfileId, setActiveProfileId] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState(null);
+  const [lastFailedMessage, setLastFailedMessage] = useState(null);
 
   /**
    * Load conversation history from the backend for a given profile.
@@ -60,15 +61,17 @@ export function ChatProvider({ children }) {
    * and the AI reply to local state. Simulates a realistic typing delay.
    */
   const sendChatMessage = useCallback(async (profileId, messageText) => {
-    if (!messageText.trim() || isTyping) return;
+    const text = messageText.trim();
+    if (!text || isTyping) return;
 
     setError(null);
+    setLastFailedMessage(null);
 
     // Append user message immediately (optimistic UI)
     const userMsg = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: messageText.trim(),
+      content: text,
       timestamp: new Date().toISOString(),
     };
 
@@ -81,14 +84,22 @@ export function ChatProvider({ children }) {
     setIsTyping(true);
 
     try {
-      // Realistic typing delay: 1–2.5s randomized BEFORE showing the reply
-      const typingDelay = 1000 + Math.random() * 1500;
+      const startTime = Date.now();
+      const response = await sendMessage(profileId, userId, text);
+      const apiDuration = Date.now() - startTime;
 
-      // Fire the API call in parallel with the delay
-      const [response] = await Promise.all([
-        sendMessage(profileId, userId, messageText.trim()),
-        new Promise((resolve) => setTimeout(resolve, typingDelay)),
-      ]);
+      // Realistic Human Typing Simulation:
+      // Real humans read/think for 600-900ms, then type at natural phone texting speed (~26ms per char).
+      // Longer responses naturally take proportionally longer to type.
+      const replyLength = (response?.reply || '').length;
+      const readingTime = 600 + Math.random() * 300;
+      const typingTime = replyLength * 26;
+      const targetDuration = Math.min(Math.max(readingTime + typingTime, 1400), 4500);
+
+      const remainingTime = targetDuration - apiDuration;
+      if (remainingTime > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingTime));
+      }
 
       const aiMsg = {
         id: `ai-${Date.now()}`,
@@ -101,19 +112,80 @@ export function ChatProvider({ children }) {
         ...prev,
         [profileId]: [...(prev[profileId] || []), aiMsg],
       }));
+      setLastFailedMessage(null);
     } catch (err) {
-      setError(err.message || 'Failed to send message. Please try again.');
+      setLastFailedMessage({ profileId, messageText: text });
+      setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
     } finally {
       setIsTyping(false);
     }
   }, [userId, isTyping]);
+
+  /**
+   * Retry sending the last failed message without adding a duplicate user bubble.
+   */
+  const retryLastMessage = useCallback(async (profileId) => {
+    if (!lastFailedMessage || lastFailedMessage.profileId !== profileId || isTyping) return;
+
+    const text = lastFailedMessage.messageText;
+    setError(null);
+    setIsTyping(true);
+
+    try {
+      const startTime = Date.now();
+      const response = await sendMessage(profileId, userId, text);
+      const apiDuration = Date.now() - startTime;
+
+      const replyLength = (response?.reply || '').length;
+      const readingTime = 600 + Math.random() * 300;
+      const typingTime = replyLength * 26;
+      const targetDuration = Math.min(Math.max(readingTime + typingTime, 1400), 4500);
+
+      const remainingTime = targetDuration - apiDuration;
+      if (remainingTime > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingTime));
+      }
+
+      const aiMsg = {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: response.reply,
+        timestamp: new Date().toISOString(),
+      };
+
+      setMessagesByProfile((prev) => ({
+        ...prev,
+        [profileId]: [...(prev[profileId] || []), aiMsg],
+      }));
+      setLastFailedMessage(null);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
+    } finally {
+      setIsTyping(false);
+    }
+  }, [userId, isTyping, lastFailedMessage]);
 
   const getMessages = useCallback(
     (profileId) => messagesByProfile[profileId] || [],
     [messagesByProfile]
   );
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  const clearConversation = useCallback(async (profileId) => {
+    try {
+      await clearChatConversation(profileId, userId);
+      setMessagesByProfile((prev) => ({ ...prev, [profileId]: [] }));
+      setLastFailedMessage(null);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to clear conversation.');
+      throw err;
+    }
+  }, [userId]);
 
   const value = {
     userId,
@@ -122,9 +194,12 @@ export function ChatProvider({ children }) {
     isTyping,
     error,
     clearError,
+    lastFailedMessage,
+    retryLastMessage,
     getMessages,
     sendChatMessage,
     loadHistory,
+    clearConversation,
     messagesByProfile,
   };
 

@@ -13,7 +13,8 @@ Responsibility:
 import logging
 from typing import List, Dict
 
-from groq import Groq, RateLimitError, APIStatusError
+import time
+from groq import Groq, RateLimitError, APIStatusError, APITimeoutError, APIConnectionError
 
 from app.llm.base_llm_interface import BaseLLMClient
 from app.config.settings import settings
@@ -40,12 +41,21 @@ def _is_quota_error(e: Exception) -> bool:
 
 
 class GroqClient(BaseLLMClient):
-    """Groq LLaMA inference via the official groq-python SDK."""
+    """Groq LLaMA inference via the official groq-python SDK with bounded timeouts."""
 
     def __init__(self) -> None:
-        self._client = Groq(api_key=settings.groq_api_key)
+        timeout_sec = getattr(settings, "llm_request_timeout_seconds", 12.0)
+        retries = getattr(settings, "llm_max_retries", 1)
+        self._client = Groq(
+            api_key=settings.groq_api_key,
+            timeout=timeout_sec,
+            max_retries=retries,
+        )
         self._model = settings.groq_model
-        logger.info("GroqClient initialised — model: %s", self._model)
+        logger.info(
+            "GroqClient initialised — model: %s, timeout: %.1fs, max_retries: %d",
+            self._model, timeout_sec, retries
+        )
 
     def generate_response(
         self,
@@ -53,29 +63,56 @@ class GroqClient(BaseLLMClient):
         chat_history: List[Dict[str, str]],
         user_message: str,
     ) -> str:
-        """Call Groq chat completions. Raises GroqQuotaExceededError on quota errors."""
+        """Call Groq chat completions with bounded latency. Raises GroqQuotaExceededError on quota errors."""
         messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(chat_history)
+        for m in chat_history:
+            c = (m.get("content") or "").strip()
+            if c:
+                messages.append({"role": m["role"], "content": c})
         messages.append({"role": "user", "content": user_message})
 
-        try:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=0.85,        # warm, varied responses
-                max_tokens=512,
-                top_p=0.95,
-            )
-            reply = response.choices[0].message.content.strip()
-            logger.debug("Groq response received (%d chars)", len(reply))
-            return reply
+        t0 = time.perf_counter()
+        for attempt in range(2):
+            try:
+                response = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=messages,
+                    temperature=0.85,        # warm, varied responses
+                    max_tokens=512,
+                    top_p=0.95,
+                )
+                elapsed = time.perf_counter() - t0
+                raw_content = response.choices[0].message.content
+                reply = (raw_content or "").strip()
 
-        except Exception as exc:
-            if _is_quota_error(exc):
-                logger.warning("Groq quota exceeded — triggering fallback: %s", exc)
-                raise GroqQuotaExceededError(str(exc)) from exc
-            logger.error("Groq API error: %s", exc)
-            raise LLMClientError(f"Groq error: {exc}") from exc
+                if not reply:
+                    logger.warning(
+                        "Groq returned empty response (0 chars) after %.2fs — triggering fallback",
+                        elapsed
+                    )
+                    raise LLMClientError("Groq returned empty response")
+
+                logger.info("Groq response received in %.2fs (%d chars)", elapsed, len(reply))
+                return reply
+
+            except Exception as exc:
+                elapsed = time.perf_counter() - t0
+                # If short rate limit window (e.g. 'try again in X seconds') and first attempt, wait briefly and retry
+                if attempt == 0 and _is_quota_error(exc) and "try again in" in str(exc).lower():
+                    logger.warning("Groq rate limit burst window reached; sleeping 2.5s before retry: %s", exc)
+                    time.sleep(2.5)
+                    continue
+
+                if _is_quota_error(exc):
+                    logger.warning("Groq quota exceeded in %.2fs — triggering fallback: %s", elapsed, exc)
+                    raise GroqQuotaExceededError(str(exc)) from exc
+                if isinstance(exc, (APITimeoutError, APIConnectionError)):
+                    logger.warning("Groq network/timeout stall after %.2fs — triggering fallback: %s", elapsed, exc)
+                    raise LLMClientError(f"Groq timeout after {elapsed:.1f}s: {exc}") from exc
+                if isinstance(exc, LLMClientError):
+                    raise
+                logger.error("Groq API error after %.2fs: %s", elapsed, exc)
+                raise LLMClientError(f"Groq error: {exc}") from exc
 
     def health_check(self) -> bool:
         """

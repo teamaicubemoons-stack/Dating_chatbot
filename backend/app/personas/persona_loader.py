@@ -167,6 +167,11 @@ def _apply_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
     data.setdefault("avatar_url", "")
     data.setdefault("personality_traits", [])
     data.setdefault("tone", "friendly")
+    data.setdefault("city", "")
+    data.setdefault("country", "")
+    data.setdefault("education", "")
+    data.setdefault("college_name", None)
+    data.setdefault("profession", "")
     data.setdefault("conversation_style_rules", [
         "Texting style: write like a real person typing on a smartphone — mostly 1 to 2 short sentences.",
         "Zero politics or religious debates: casually and playfully deflect heavy topics like a real person changing the subject, never say 'As an AI'.",

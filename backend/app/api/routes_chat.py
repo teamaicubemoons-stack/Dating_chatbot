@@ -13,7 +13,8 @@ HTTP concerns: request parsing, response shaping, error mapping.
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, Depends
+from datetime import timezone
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.chat.chat_engine import process_chat_message
@@ -30,6 +31,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def send_message(
     profile_id: str,
     body: ChatRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
@@ -44,6 +46,7 @@ async def send_message(
             profile_id=profile_id,
             user_id=body.user_id,
             user_message=body.message,
+            background_tasks=background_tasks,
         )
         return ChatResponse(reply=reply, profile_id=profile_id)
 
@@ -82,7 +85,11 @@ def get_history(
                 id=m.id,
                 role=m.role,
                 content=m.content,
-                created_at=m.created_at,
+                created_at=(
+                    m.created_at.replace(tzinfo=timezone.utc)
+                    if m.created_at and m.created_at.tzinfo is None
+                    else m.created_at
+                ),
             )
             for m in messages
         ],
@@ -114,3 +121,43 @@ def get_opener(profile_id: str):
         }
     except PersonaNotFoundError:
         raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+
+
+@router.delete("/{profile_id}/messages")
+def clear_chat_conversation(
+    profile_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete all chat messages between user and a specific persona profile.
+    Resets the conversation to a fresh state without deleting the profile itself.
+    """
+    from app.models.db_models import Message, ConversationSummary, ConversationState
+
+    deleted_count = (
+        db.query(Message)
+        .filter(Message.user_id == user_id, Message.profile_id == profile_id)
+        .delete()
+    )
+
+    # Clear rolling summary and conversation state for this specific chat
+    db.query(ConversationSummary).filter(
+        ConversationSummary.user_id == user_id,
+        ConversationSummary.profile_id == profile_id,
+    ).delete()
+
+    db.query(ConversationState).filter(
+        ConversationState.user_id == user_id,
+        ConversationState.profile_id == profile_id,
+    ).delete()
+
+    db.commit()
+    logger.info("Cleared %d messages for user %s and profile %s", deleted_count, user_id[:8], profile_id)
+    return {
+        "success": True,
+        "profile_id": profile_id,
+        "deleted_messages": deleted_count,
+        "message": f"Conversation with {profile_id} cleared successfully.",
+    }
+

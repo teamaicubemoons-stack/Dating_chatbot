@@ -25,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config.logging_config import setup_logging
 from app.config.settings import settings
 from app.api.dependencies import init_db, SessionLocal
-from app.api import routes_chat, routes_profiles, routes_health
+from app.api import routes_chat, routes_profiles, routes_health, routes_memories
 from app.models.db_models import LLMStatus, Profile
 from app.personas.persona_loader import load_all_personas
 from app.rag.vector_store import seed_persona_knowledge
@@ -128,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_profiles.router)
     app.include_router(routes_chat.router)
     app.include_router(routes_health.router)
+    app.include_router(routes_memories.router)
 
     # Check for built frontend in common locations (Docker / Hugging Face Spaces)
     from pathlib import Path

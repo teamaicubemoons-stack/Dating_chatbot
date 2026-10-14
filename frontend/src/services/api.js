@@ -29,11 +29,16 @@ const apiClient = axios.create({
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message =
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
-      error.message ||
-      'Something went wrong';
+    let message = 'Something went wrong';
+    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Network Error')) {
+      message = 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?';
+    } else if (error.response?.data?.detail) {
+      message = error.response.data.detail;
+    } else if (error.response?.data?.message) {
+      message = error.response.data.message;
+    } else if (error.message) {
+      message = error.message;
+    }
     return Promise.reject(new Error(message));
   }
 );
@@ -43,58 +48,31 @@ apiClient.interceptors.response.use(
 // Profile API calls
 // ============================================================
 
-/**
- * Fetch all available AI persona profiles (for the homepage grid).
- * @returns {Promise<Array<{id, name, short_bio, avatar_url}>>}
- */
 export const getProfiles = async () => {
   const { data } = await apiClient.get('/profiles');
   return data;
 };
 
-/**
- * Fetch full public info for a single persona profile.
- * @param {string} profileId
- * @returns {Promise<Object>}
- */
 export const getProfile = async (profileId) => {
   const { data } = await apiClient.get(`/profiles/${profileId}`);
   return data;
 };
 
-/**
- * Create a new AI dating persona.
- * @param {Object} profileData
- * @returns {Promise<Object>}
- */
 export const createProfile = async (profileData) => {
   const { data } = await apiClient.post('/profiles', profileData);
   return data;
 };
 
-/**
- * Delete an AI persona profile and all its associated chats.
- * @param {string} profileId
- * @returns {Promise<Object>}
- */
 export const deleteProfile = async (profileId) => {
   const { data } = await apiClient.delete(`/profiles/${profileId}`);
   return data;
 };
 
 
-
 // ============================================================
 // Chat API calls
 // ============================================================
 
-/**
- * Send a user message to an AI persona and receive a reply.
- * @param {string} profileId  - Which persona to chat with.
- * @param {string} userId     - The user's session UUID.
- * @param {string} message    - The user's message text.
- * @returns {Promise<{reply: string, profile_id: string}>}
- */
 export const sendMessage = async (profileId, userId, message) => {
   const { data } = await apiClient.post(`/chat/${profileId}`, {
     user_id: userId,
@@ -103,12 +81,6 @@ export const sendMessage = async (profileId, userId, message) => {
   return data;
 };
 
-/**
- * Fetch conversation history for a user+profile pair.
- * @param {string} profileId
- * @param {string} userId
- * @returns {Promise<{messages: Array}>}
- */
 export const getChatHistory = async (profileId, userId) => {
   const { data } = await apiClient.get(`/chat/${profileId}/history`, {
     params: { user_id: userId },
@@ -116,12 +88,64 @@ export const getChatHistory = async (profileId, userId) => {
   return data;
 };
 
-/**
- * Fetch a natural opening greeting for a persona.
- * @param {string} profileId
- * @returns {Promise<{profile_id: string, name: string, opener: string}>}
- */
 export const getOpener = async (profileId) => {
   const { data } = await apiClient.get(`/chat/${profileId}/opener`);
+  return data;
+};
+
+export const clearChatConversation = async (profileId, userId) => {
+  const { data } = await apiClient.delete(`/chat/${profileId}/messages`, {
+    params: { user_id: userId },
+  });
+  return data;
+};
+
+
+// ============================================================
+// Memory & Privacy API calls
+// ============================================================
+
+export const getMemories = async (userId, profileId = null, memoryType = null) => {
+  const params = { user_id: userId };
+  if (profileId) params.profile_id = profileId;
+  if (memoryType) params.memory_type = memoryType;
+  const { data } = await apiClient.get('/memories', { params });
+  return data;
+};
+
+export const updateMemory = async (memoryId, userId, memoryText) => {
+  const { data } = await apiClient.patch(`/memories/${memoryId}`, { memory_text: memoryText }, {
+    params: { user_id: userId },
+  });
+  return data;
+};
+
+export const deleteMemory = async (memoryId, userId) => {
+  const { data } = await apiClient.delete(`/memories/${memoryId}`, {
+    params: { user_id: userId },
+  });
+  return data;
+};
+
+export const forgetMemories = async (userId, scope = 'all', profileId = null) => {
+  const { data } = await apiClient.post('/memories/forget', {
+    user_id: userId,
+    scope,
+    profile_id: profileId,
+  });
+  return data;
+};
+
+export const exportUserData = async (userId) => {
+  const { data } = await apiClient.get('/privacy/data-export', {
+    params: { user_id: userId },
+  });
+  return data;
+};
+
+export const deleteAccountData = async (userId) => {
+  const { data } = await apiClient.delete('/account/data', {
+    params: { user_id: userId },
+  });
   return data;
 };

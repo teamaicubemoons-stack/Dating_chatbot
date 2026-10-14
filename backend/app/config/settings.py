@@ -5,7 +5,7 @@ Central configuration module. Loads all environment variables via pydantic-setti
 Import `settings` anywhere in the app — never read os.environ directly elsewhere.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
@@ -29,11 +29,15 @@ class Settings(BaseSettings):
     max_recent_history_turns: int = 10   # raw history turns sent in prompt
     rag_top_k: int = 4                   # number of RAG chunks retrieved per query
     groq_health_check_interval_hours: int = 12
+    llm_request_timeout_seconds: float = 12.0  # Fast failover ceiling per provider (never stalls chat)
+    llm_max_retries: int = 0                   # 0 retries allows instant failover to Claude on rate limits
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
 
 @lru_cache()

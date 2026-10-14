@@ -14,7 +14,15 @@ import TypingIndicator from './TypingIndicator';
 import { useChatContext } from '../context/ChatContext';
 
 export default function ChatWindow({ profile }) {
-  const { getMessages, sendChatMessage, isTyping, error, clearError } = useChatContext();
+  const {
+    getMessages,
+    sendChatMessage,
+    isTyping,
+    error,
+    clearError,
+    lastFailedMessage,
+    retryLastMessage,
+  } = useChatContext();
   const messages = getMessages(profile.id);
 
   const [input, setInput] = useState('');
@@ -121,12 +129,41 @@ export default function ChatWindow({ profile }) {
           />
         ))}
 
-        {isTyping && <TypingIndicator profileName={profile.name} />}
+        {isTyping && (
+          <TypingIndicator
+            profileName={profile.name}
+            avatarUrl={profile.avatar_url}
+            avatarChar={avatarChar}
+          />
+        )}
 
         {error && (
           <div className="chat-window__error" role="alert">
-            <span>⚠ {error}</span>
-            <button onClick={clearError} className="chat-window__error-dismiss" aria-label="Dismiss error">×</button>
+            <div className="chat-window__error-body">
+              <span className="chat-window__error-icon">⚠️</span>
+              <span className="chat-window__error-msg">{error}</span>
+            </div>
+            <div className="chat-window__error-actions">
+              {lastFailedMessage?.profileId === profile.id && (
+                <button
+                  type="button"
+                  onClick={() => retryLastMessage(profile.id)}
+                  disabled={isTyping}
+                  className="chat-window__retry-btn"
+                  id={`retry-btn-${profile.id}`}
+                >
+                  🔄 Try Again
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clearError}
+                className="chat-window__error-dismiss"
+                aria-label="Dismiss error"
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
 

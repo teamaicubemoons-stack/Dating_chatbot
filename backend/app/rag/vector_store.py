@@ -152,6 +152,30 @@ def delete_collection(profile_id: str) -> None:
         logger.warning("Could not delete collection for %s: %s", profile_id, exc)
 
 
+def delete_documents(profile_id: str, ids: List[str]) -> None:
+    """Delete specific document IDs from a persona collection."""
+    if not ids:
+        return
+    try:
+        collection = get_or_create_collection(profile_id)
+        collection.delete(ids=ids)
+        logger.debug("Deleted %d documents from collection '%s'", len(ids), profile_id)
+    except Exception as exc:
+        logger.warning("Failed to delete documents from %s: %s", profile_id, exc)
+
+
+def delete_documents_by_metadata(profile_id: str, where: dict) -> None:
+    """Delete documents matching metadata filter (e.g. user_id)."""
+    if not where:
+        return
+    try:
+        collection = get_or_create_collection(profile_id)
+        collection.delete(where=where)
+        logger.debug("Deleted documents by metadata from collection '%s'", profile_id)
+    except Exception as exc:
+        logger.warning("Failed to delete documents by metadata from %s: %s", profile_id, exc)
+
+
 def seed_persona_knowledge(profile_id: str, persona: dict) -> None:
     """
     Index a persona's backstory and traits into its ChromaDB collection at startup.

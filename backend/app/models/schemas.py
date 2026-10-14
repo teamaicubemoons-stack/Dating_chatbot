@@ -7,7 +7,7 @@ DB persistence, the other handles API serialization/validation.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 
@@ -43,7 +43,6 @@ class ProfileDetail(BaseModel):
     city: Optional[str] = ""
     short_bio: str
     avatar_url: str
-    
 
     personality_traits: List[str] = []
     tone: str = ""
@@ -102,6 +101,83 @@ class ConversationHistoryResponse(BaseModel):
     profile_id: str
     user_id: str
     messages: List[MessageOut]
+
+
+# ---------------------------------------------------------------------------
+# Memory Schemas
+# ---------------------------------------------------------------------------
+
+class UserMemoryOut(BaseModel):
+    id: str
+    user_id: str
+    profile_id: Optional[str] = None
+    memory_type: str
+    memory_text: str
+    normalized_key: Optional[str] = None
+    confidence: float
+    importance: float
+    source_type: str
+    valid_from: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    last_confirmed_at: Optional[datetime] = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class UserMemoryPatch(BaseModel):
+    memory_text: Optional[str] = Field(None, min_length=2, max_length=1000)
+    importance: Optional[float] = Field(None, ge=0.0, le=1.0)
+    status: Optional[str] = Field(None, pattern="^(active|archived|deleted)$")
+
+
+class MemoryForgetRequest(BaseModel):
+    user_id: str
+    profile_id: Optional[str] = None
+    memory_type: Optional[str] = None
+    scope: str = Field("all", pattern="^(all|relationship|profile_facts)$")
+
+
+class ConversationSummaryOut(BaseModel):
+    id: int
+    user_id: str
+    profile_id: str
+    summary_text: str
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ConversationStateOut(BaseModel):
+    user_id: str
+    profile_id: str
+    current_topic: str
+    conversation_tone: str
+    user_stated_emotion: str
+    inferred_emotional_cue: str
+    open_threads: List[str]
+    last_follow_up_at: Optional[datetime]
+    updated_at: datetime
+
+
+class DataExportResponse(BaseModel):
+    user_id: str
+    exported_at: datetime
+    memories: List[UserMemoryOut]
+    summaries: List[ConversationSummaryOut]
+    messages: List[MessageOut]
+    states: List[Dict[str, Any]]
+
+
+class AccountDeleteResponse(BaseModel):
+    success: bool
+    user_id: str
+    deleted_records: Dict[str, int]
+    message: str
 
 
 # ---------------------------------------------------------------------------

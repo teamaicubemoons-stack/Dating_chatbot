@@ -105,23 +105,48 @@ def route_and_generate(
     """
     status = _get_or_create_status(db)
     provider = status.current_provider
+    import time
+    t_start = time.perf_counter()
 
     if provider == "groq":
         try:
-            return _get_groq().generate_response(system_prompt, chat_history, user_message)
+            res = _get_groq().generate_response(system_prompt, chat_history, user_message)
+            logger.info("Routing: Groq served request in %.2fs", time.perf_counter() - t_start)
+            return res
         except GroqQuotaExceededError:
             # Quota hit — silently switch to Claude and retry the same request
-            logger.warning("Groq quota exceeded; switching to Claude (transparent to user)")
+            logger.warning("Groq quota exceeded after %.2fs; switching to Claude (transparent to user)", time.perf_counter() - t_start)
             _set_provider(db, "claude", groq_available=False)
-            # Fall through to Claude call below
-            return _get_claude().generate_response(system_prompt, chat_history, user_message)
-        except LLMClientError:
+            try:
+                res = _get_claude().generate_response(system_prompt, chat_history, user_message)
+                logger.info("Routing: Claude fallback served request in %.2fs total", time.perf_counter() - t_start)
+                return res
+            except Exception as c_err:
+                logger.warning("Claude fallback failed (%s); reverting DB to Groq", c_err)
+                _set_provider(db, "groq", groq_available=True)
+                raise
+        except LLMClientError as err:
             # Non-quota Groq error — still try Claude as emergency fallback
-            logger.error("Groq non-quota error; attempting Claude emergency fallback")
-            return _get_claude().generate_response(system_prompt, chat_history, user_message)
+            logger.error("Groq non-quota error after %.2fs (%s); attempting Claude emergency fallback", time.perf_counter() - t_start, err)
+            try:
+                res = _get_claude().generate_response(system_prompt, chat_history, user_message)
+                logger.info("Routing: Claude emergency fallback served request in %.2fs total", time.perf_counter() - t_start)
+                return res
+            except Exception as c_err:
+                logger.warning("Claude emergency fallback failed (%s)", c_err)
+                raise
 
     else:  # provider == "claude"
-        return _get_claude().generate_response(system_prompt, chat_history, user_message)
+        try:
+            res = _get_claude().generate_response(system_prompt, chat_history, user_message)
+            logger.info("Routing: Claude served request in %.2fs", time.perf_counter() - t_start)
+            return res
+        except Exception as c_err:
+            logger.warning("Claude unavailable (%s); attempting Groq recovery", c_err)
+            _set_provider(db, "groq", groq_available=True)
+            res = _get_groq().generate_response(system_prompt, chat_history, user_message)
+            logger.info("Routing: Groq recovery served request in %.2fs", time.perf_counter() - t_start)
+            return res
 
 
 def run_groq_health_check(db: Session) -> None:

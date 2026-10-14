@@ -9,7 +9,12 @@ import React from 'react';
 
 function formatTime(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
+  let s = String(iso);
+  // If naive ISO string from backend lacks timezone offset, append 'Z' so client parses as UTC
+  if (!s.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(s)) {
+    s = s + 'Z';
+  }
+  const d = new Date(s);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 

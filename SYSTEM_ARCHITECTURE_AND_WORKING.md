@@ -1,4 +1,7 @@
+ or 
+
 # ✦ Spark — AI Dating & Companion Chatbot Platform
+
 ## Complete System Architecture, Working & Technical Blueprint
 
 ---
@@ -8,6 +11,7 @@
 **Spark** is an enterprise-grade, modular, multi-persona AI companion platform engineered specifically to deliver authentic, human-like dating and companionship conversations. Unlike generic chatbots that sound formal, preachy, or robotic, Spark mimics the cadence, emotional intelligence, and style of real people texting on mobile phones.
 
 ### Core Highlights:
+
 - **Multi-Persona Isolation:** Supports distinct personas (e.g., Luna the Brooklyn photographer, Ethan the Boston neuroscientist, Zara the DJ/founder, Diya the creative director).
 - **Hinglish & Natural Language Matching:** Detects whether the user is typing in English, Hindi, or Hinglish (Roman Hindi) and dynamically mirrors their conversational language style.
 - **Human Texting Illusion:** Enforces strict human texting rules (1–2 short sentences, natural punctuation, casual openers, zero "As an AI" robotic phrases).
@@ -121,12 +125,14 @@ When a user opens the app and sends a message, here is the exact chronological p
 Every AI companion is defined as a standalone JSON configuration inside `backend/app/personas/configs/`.
 
 ### Active Personas in System:
+
 1. **Luna (`profile_1`)**: Brooklyn-based 35mm film photographer, dry wit, authentic, low-key, grounded.
 2. **Ethan (`profile_2`)**: Boston neuroscience PhD researcher, charmingly nerdy, passionate about cognition and music.
 3. **Zara (`profile_3`)**: NYC / Berlin startup founder and underground techno DJ, bold, unfiltered, fast-paced.
 4. **Diya (`profile_diya_...`)**: Mumbai creative director, witty, loves art galleries, coffee, and urban aesthetics.
 
 ### Persona JSON Schema:
+
 ```json
 {
   "id": "profile_1",
@@ -156,6 +162,7 @@ Every AI companion is defined as a standalone JSON configuration inside `backend
 ```
 
 ### Automatic Sync on Application Startup (`app/main.py`):
+
 - Reads all JSON configs from `backend/app/personas/configs/`.
 - Upserts corresponding records in SQLite `Profile` table.
 - Chunks backstory and traits into ChromaDB collection `profile-{profile_id}`.
@@ -167,6 +174,7 @@ Every AI companion is defined as a standalone JSON configuration inside `backend
 The prompt engineering engine in `backend/app/chat/prompt_builder.py` is the heart of Spark's human persona illusion.
 
 ### Strict Conversation Rules Injected into LLM:
+
 1. **Length & Pacing:** Text like a real phone user — **1 to 2 short sentences** per turn. Never send bullet points, paragraphs, or essay-length replies.
 2. **First Message Rule:** First greeting is capped at **8 to 12 words max**.
 3. **Question Discipline:** Ask at most **one question**, and frequently **zero questions** (just react like a normal person).
@@ -178,14 +186,19 @@ The prompt engineering engine in `backend/app/chat/prompt_builder.py` is the hea
    - *"I hope this message finds you well."*
 
 ### Dynamic Language Adaptation (`language_detector.py`):
+
 The system analyzes incoming user messages for vocabulary:
+
 - **English input:** Responds in natural, conversational English.
 - **Hindi / Hinglish input:** Detects terms such as *"kya", "kaisi", "batao", "mast", "yaar", "achha", "aaj", "kuch"*.
-- **Directive injected:** 
+- **Directive injected:**
   > *"The user is texting in Hinglish / Hindi. Respond naturally in casual, conversational Hinglish (Roman script). Blend Hindi and English words naturally, exactly how young urban friends text."*
+  >
 
 ### Controversy & Safety Deflection:
+
 Regex patterns filter political and religious inquiries:
+
 - If political figures or religious debates are detected, the system executes a playful human deflection:
   - *Example:* *"haha yaar politics pe debate nahi karte, life is too short for that 😅 Tell me something fun about your day instead!"*
 
@@ -194,10 +207,13 @@ Regex patterns filter political and religious inquiries:
 ## 6. RAG & Vector Memory (Ultra-Low Memory Architecture)
 
 ### The Cloud Problem:
+
 Traditional RAG setups load `sentence-transformers` and `torch` (PyTorch). PyTorch allocates ~450MB–500MB RAM upon import. On free cloud hosts (Render 512MB RAM free tier), this caused immediate **OOM crashes** (`Out of memory: used over 512MB`).
 
 ### Spark's Custom 384-Dim Subword Hashing Vectorizer (`app/rag/embedder.py`):
+
 Spark uses a custom, zero-dependency subword hashing embedder:
+
 1. **Tokenization & Subword Extraction:** Extracts all words and decomposes them into 3-to-5 character n-grams.
 2. **MD5 Dimension Mapping:** Hashes each n-gram deterministically into a 384-dimensional vector space.
 3. **Frequency Weighting & L2 Normalization:** Normalizes the vector to unit length ($\|v\| = 1$), meaning the dot product is exactly the **cosine similarity**.
@@ -205,6 +221,7 @@ Spark uses a custom, zero-dependency subword hashing embedder:
 5. **Execution Time:** **< 0.2 milliseconds** per query.
 
 ### ChromaDB Collections:
+
 - Initialized with `chromadb.PersistentClient(path="./chroma_data")`.
 - Metadata specifies cosine metric (`hnsw:space: cosine`).
 - Chunks stored include:
@@ -246,6 +263,7 @@ sequenceDiagram
 ```
 
 ### Self-Healing APScheduler Background Worker:
+
 - `backend/app/scheduler/groq_health_check.py` registers a background cron job running every **12 hours**.
 - If the current provider is `"claude"`, it sends a tiny probe request to Groq.
 - The moment Groq's daily rate limit resets and responds successfully, the scheduler automatically switches `current_provider` back to `"groq"`.
@@ -258,12 +276,12 @@ All persistent application state is stored in `app.db` via SQLAlchemy ORM.
 
 ### Database Tables:
 
-| Table Name | Primary Key | Description | Relationships |
-|---|---|---|---|
-| `users` | `id` (String UUID) | User sessions / anonymous accounts | `messages` (1-to-many) |
-| `profiles` | `id` (String) | Registered AI companion personas | `messages` (1-to-many) |
-| `messages` | `id` (Integer Auto) | Every chat message (`role: user / assistant`) | Belongs to `user` & `profile` |
-| `llm_status` | `id` (Integer = 1) | Active LLM provider tracking (`groq` / `claude`) | Singleton status record |
+| Table Name     | Primary Key           | Description                                          | Relationships                    |
+| -------------- | --------------------- | ---------------------------------------------------- | -------------------------------- |
+| `users`      | `id` (String UUID)  | User sessions / anonymous accounts                   | `messages` (1-to-many)         |
+| `profiles`   | `id` (String)       | Registered AI companion personas                     | `messages` (1-to-many)         |
+| `messages`   | `id` (Integer Auto) | Every chat message (`role: user / assistant`)      | Belongs to`user` & `profile` |
+| `llm_status` | `id` (Integer = 1)  | Active LLM provider tracking (`groq` / `claude`) | Singleton status record          |
 
 ---
 
@@ -272,6 +290,7 @@ All persistent application state is stored in `app.db` via SQLAlchemy ORM.
 The frontend is a modern single-page application built with React 18, Vite, and scoped Vanilla CSS.
 
 ### Key Components:
+
 - **`AppLayout.jsx`:** Main navigation shell with responsive desktop sidebar and mobile bottom navigation bar.
 - **`HomePage.jsx`:** Hero section, AI companion disclosure badge, and interactive grid of persona cards.
 - **`ProfileCard.jsx`:** Persona card with avatar image, online green indicator dot, personality tags, bio, and action buttons:
@@ -284,6 +303,7 @@ The frontend is a modern single-page application built with React 18, Vite, and 
 - **`api.js`:** Production-aware Axios client that automatically uses relative paths (`""`) in unified Docker/Render deployments and `http://localhost:8000` in local development.
 
 ### Mobile Screen Scrolling & Layout Fix:
+
 - Uses `100dvh` (dynamic viewport height) and explicit `overflow: hidden` on layout roots with `overflow-y: auto` and `-webkit-overflow-scrolling: touch` on the message container.
 - Prevents iOS/Android Safari address bar jumping and guarantees buttery-smooth scrolling.
 
@@ -292,12 +312,14 @@ The frontend is a modern single-page application built with React 18, Vite, and 
 ## 10. REST API Specification
 
 ### 1. Persona Endpoints
+
 - **`GET /profiles`**: List all available personas (returns array of profiles).
 - **`GET /profiles/{profile_id}`**: Get detailed persona profile information.
 - **`POST /profiles`**: Add a new custom persona configuration.
 - **`DELETE /profiles/{profile_id}`**: Delete a persona from database.
 
 ### 2. Chat Endpoints
+
 - **`POST /chat/{profile_id}`**:
   - Request Body: `{"user_id": "string", "message": "string"}`
   - Response Body: `{"reply": "string", "profile_id": "string"}`
@@ -305,6 +327,7 @@ The frontend is a modern single-page application built with React 18, Vite, and 
   - Retrieves chronological conversation history for the session.
 
 ### 3. System Endpoints
+
 - **`GET /health`**:
   - Returns active LLM provider (`groq` or `claude`), Groq availability status, and database health.
 - **`GET /docs`**:
@@ -315,6 +338,7 @@ The frontend is a modern single-page application built with React 18, Vite, and 
 ## 11. Cloud Deployment Setup
 
 ### 1. Render.com (100% Free Tier Web Service)
+
 - **Repo:** Connected to `https://github.com/teamaicubemoons-stack/Dating_chatbot.git`
 - **Build Step:** Pre-compiled React assets placed in `backend/static/`
 - **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
@@ -322,6 +346,7 @@ The frontend is a modern single-page application built with React 18, Vite, and 
 - **Live URL:** `https://dating-chatbot-kfqm.onrender.com`
 
 ### 2. Hugging Face Spaces (Gradio SDK + ZeroGPU)
+
 - **Space:** `https://huggingface.co/spaces/cubemoonsai/dateing_chatbot`
 - **Configuration:** `sdk: gradio`, `app_port: 7860`, `app_file: app.py`
 - **Entry Point:** Root `app.py` runs a Gradio Blocks UI that embeds the Spark AI companion engine with persona cards, audio call simulator, and live Groq inference.
