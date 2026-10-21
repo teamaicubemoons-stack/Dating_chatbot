@@ -25,14 +25,16 @@ from app.personas.persona_loader import load_persona
 from app.rag.retriever import retrieve_context
 from app.memory.conversation_memory import get_conversation_history, persist_exchange
 from app.memory.memory_store import (
-    ensure_user, ensure_profile, get_latest_summary, get_or_create_conversation_state
+    ensure_user, ensure_profile, get_latest_summary, get_or_create_conversation_state,
+    update_conversation_state
 )
 from app.memory.memory_extractor import (
     process_and_persist_memories, detect_pronoun_preference, detect_user_gender_cue
 )
+from app.config.settings import settings
 from app.utils.time_context import get_current_context
-from app.chat.prompt_builder import build_final_prompt
-from app.chat.response_validator import validate_and_clean_response
+from app.chat.prompt_builder import build_final_prompt, build_direct_prompt
+from app.chat.response_validator import validate_and_clean_response, arrange_and_format_response
 from app.llm.llm_router import route_and_generate
 from app.utils.error_handler import PersonaNotFoundError, LLMClientError
 
@@ -125,18 +127,30 @@ async def process_chat_message(
         "user_gender": user_gender,
     }
 
-    # 6. Build modular final prompt with authoritative runtime time context
-    system_prompt, trimmed_history = build_final_prompt(
-        persona=persona,
-        rag_context=rag_context,
-        chat_history=chat_history,
-        user_message=user_message,
-        rolling_summary=rolling_summary,
-        conversation_state=state_dict,
-        time_context=time_context,
-    )
+    # 6. Build prompt (Direct rule-free flow or modular prompt)
+    if getattr(settings, "use_direct_prompt_flow", True):
+        logger.debug("Using direct rule-free prompt flow for profile %s", profile_id)
+        system_prompt, trimmed_history = build_direct_prompt(
+            persona=persona,
+            chat_history=chat_history,
+            user_message=user_message,
+            rag_context=rag_context,
+            rolling_summary=rolling_summary,
+            conversation_state=state_dict,
+            time_context=time_context,
+        )
+    else:
+        system_prompt, trimmed_history = build_final_prompt(
+            persona=persona,
+            rag_context=rag_context,
+            chat_history=chat_history,
+            user_message=user_message,
+            rolling_summary=rolling_summary,
+            conversation_state=state_dict,
+            time_context=time_context,
+        )
 
-    # 7. Generate AI response (transparent Groq/Claude failover routing)
+    # 7. Generate AI response (OpenAI direct / router)
     raw_reply = route_and_generate(
         db=db,
         system_prompt=system_prompt,
@@ -144,8 +158,8 @@ async def process_chat_message(
         user_message=user_message,
     )
 
-    # 8. Deterministic response validation & cleanup
-    ai_reply = validate_and_clean_response(
+    # 8. Deterministic response arrangement & formatting according to user
+    ai_reply = arrange_and_format_response(
         raw_response=raw_reply,
         persona_name=persona_name,
         recent_history=trimmed_history,
@@ -162,6 +176,21 @@ async def process_chat_message(
         user_message=user_message,
         ai_reply=ai_reply,
     )
+
+    # Keep only lightweight, conversation-scoped cues synchronously available
+    # for the next turn. Long-term extraction remains asynchronous.
+    if state_dict.get("current_topic") or user_message.strip():
+        update_conversation_state(
+            db=db,
+            user_id=user_id,
+            profile_id=profile_id,
+            current_topic=state_dict.get("current_topic") or user_message.strip()[:120],
+            conversation_tone=state_dict.get("conversation_tone") or "casual",
+            recent_context={
+                "last_user_message": user_message.strip()[:240],
+                "last_assistant_message": ai_reply[:240],
+            },
+        )
 
     # 10. Extract, deduplicate, and persist long-term candidate memories
     # Use non-blocking background task so HTTP response returns immediately

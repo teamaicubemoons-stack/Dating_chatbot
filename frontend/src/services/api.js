@@ -9,13 +9,26 @@
 
 import axios from 'axios';
 
-// When running in unified Docker / Hugging Face Spaces, uses relative URL; in local dev, points to localhost:8000
-const BASE_URL =
-  import.meta.env.VITE_API_BASE_URL !== undefined
-    ? import.meta.env.VITE_API_BASE_URL
-    : import.meta.env.DEV
-    ? 'http://localhost:8000'
-    : '';
+// When running in unified Docker / Hugging Face Spaces, uses relative URL;
+// In local dev, automatically uses the current hostname (localhost or LAN IP like 192.168.x.x) on port 8000
+const getBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL !== undefined) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname || '';
+    // If accessing via ngrok, Cloudflare tunnel, or remote domain, use relative path so Vite proxies to backend port 8000
+    if (host.includes('ngrok') || host.includes('trycloudflare') || host.includes('loca.lt')) {
+      return '';
+    }
+    if (import.meta.env.DEV) {
+      return `http://${host || 'localhost'}:8000`;
+    }
+  }
+  return '';
+};
+
+const BASE_URL = getBaseUrl();
 
 const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -30,8 +43,17 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     let message = 'Something went wrong';
-    if (error.code === 'ECONNABORTED' || error.message?.includes('timeout') || error.message?.includes('Network Error')) {
+    const requestUrl = error.config?.url || '';
+    const isChatReplyRequest = error.config?.method?.toLowerCase() === 'post'
+      && requestUrl.includes('/chat/');
+    const isConnectionFailure = error.code === 'ECONNABORTED'
+      || error.message?.includes('timeout')
+      || error.message?.includes('Network Error');
+
+    if (isConnectionFailure && isChatReplyRequest) {
       message = 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?';
+    } else if (isConnectionFailure) {
+      message = 'Backend se connection nahi ho pa raha. Server check karke dobara try karo.';
     } else if (error.response?.data?.detail) {
       message = error.response.data.detail;
     } else if (error.response?.data?.message) {

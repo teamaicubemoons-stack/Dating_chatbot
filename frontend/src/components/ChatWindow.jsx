@@ -40,16 +40,47 @@ export default function ChatWindow({ profile }) {
     inputRef.current?.focus();
   }, [profile.id]);
 
+  // Let users start typing immediately, like ChatGPT, without first clicking
+  // the composer. Do not steal focus from another text field or control.
+  useEffect(() => {
+    const focusComposerForTyping = (event) => {
+      const target = event.target;
+      const isEditableTarget = target instanceof HTMLElement && (
+        target.isContentEditable ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT'
+      );
+      const isPrintableKey = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
+
+      if (!isEditableTarget && isPrintableKey && !isTyping) {
+        inputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', focusComposerForTyping);
+    return () => window.removeEventListener('keydown', focusComposerForTyping);
+  }, [isTyping]);
+
+  // Response generation disables the composer; restore focus as soon as it is
+  // available so the next message can be typed without another click.
+  useEffect(() => {
+    if (!isTyping) {
+      inputRef.current?.focus();
+    }
+  }, [isTyping]);
+
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || isTyping) return;
     setInput('');
     clearError();
     await sendChatMessage(profile.id, text);
+    inputRef.current?.focus();
   }, [input, isTyping, sendChatMessage, profile.id, clearError]);
 
   const handleKeyDown = useCallback((e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -125,6 +156,7 @@ export default function ChatWindow({ profile }) {
             key={msg.id}
             message={msg}
             profileName={profile.name}
+            avatarUrl={profile.avatar_url}
             avatarChar={avatarChar}
           />
         ))}

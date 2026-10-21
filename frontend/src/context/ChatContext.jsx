@@ -89,29 +89,69 @@ export function ChatProvider({ children }) {
       const apiDuration = Date.now() - startTime;
 
       // Realistic Human Typing Simulation:
-      // Real humans read/think for 600-900ms, then type at natural phone texting speed (~26ms per char).
-      // Longer responses naturally take proportionally longer to type.
+      // Real humans read/think for 600-1100ms, then type with natural jitter.
+      // Occasionally (1 out of ~15 times) a slightly longer pause (e.g. 5-7s) to simulate real-world multitasking.
+      const isOccasionalLateReply = Math.random() < 0.07;
+      const baseJitter = 400 + Math.random() * 500;
       const replyLength = (response?.reply || '').length;
-      const readingTime = 600 + Math.random() * 300;
-      const typingTime = replyLength * 26;
-      const targetDuration = Math.min(Math.max(readingTime + typingTime, 1400), 4500);
+      const readingTime = 700 + Math.random() * 400;
+      const typingTime = replyLength * 28;
+      let targetDuration = Math.min(Math.max(readingTime + typingTime + baseJitter, 1600), 4800);
+      if (isOccasionalLateReply) {
+        targetDuration = 6000 + Math.random() * 2000;
+      }
 
       const remainingTime = targetDuration - apiDuration;
       if (remainingTime > 0) {
         await new Promise((resolve) => setTimeout(resolve, remainingTime));
       }
 
-      const aiMsg = {
-        id: `ai-${Date.now()}`,
+      // Split reply into multiple bubbles if multi-line or reaction + follow-up question
+      const rawReply = (response?.reply || '').trim();
+      let bubbles = [];
+      if (rawReply.includes('\n')) {
+        bubbles = rawReply.split('\n').map((s) => s.trim()).filter(Boolean);
+      } else {
+        const splitMatch = rawReply.match(/^(.+?[.!,])\s+((?:waise\s+|aur\s+|tu\s+|tum\s+|kya\s+)?.+\?)$/i);
+        if (splitMatch && splitMatch[1].length >= 10 && splitMatch[2].length >= 6) {
+          bubbles = [splitMatch[1].trim(), splitMatch[2].trim()];
+        } else {
+          bubbles = [rawReply];
+        }
+      }
+
+      const firstBubble = bubbles[0] || rawReply;
+      const aiMsg1 = {
+        id: `ai-${Date.now()}-1`,
         role: 'assistant',
-        content: response.reply,
+        content: firstBubble,
         timestamp: new Date().toISOString(),
       };
 
       setMessagesByProfile((prev) => ({
         ...prev,
-        [profileId]: [...(prev[profileId] || []), aiMsg],
+        [profileId]: [...(prev[profileId] || []), aiMsg1],
       }));
+
+      // Deliver subsequent bubble(s) with short realistic pauses
+      if (bubbles.length > 1) {
+        for (let i = 1; i < bubbles.length; i++) {
+          setIsTyping(true);
+          const gap = 800 + Math.random() * 450;
+          await new Promise((resolve) => setTimeout(resolve, gap));
+          const aiMsgNext = {
+            id: `ai-${Date.now()}-${i + 1}`,
+            role: 'assistant',
+            content: bubbles[i],
+            timestamp: new Date().toISOString(),
+          };
+          setMessagesByProfile((prev) => ({
+            ...prev,
+            [profileId]: [...(prev[profileId] || []), aiMsgNext],
+          }));
+        }
+      }
+
       setLastFailedMessage(null);
     } catch (err) {
       setLastFailedMessage({ profileId, messageText: text });
@@ -137,7 +177,7 @@ export function ChatProvider({ children }) {
       const apiDuration = Date.now() - startTime;
 
       const replyLength = (response?.reply || '').length;
-      const readingTime = 600 + Math.random() * 300;
+      const readingTime = 700 + Math.random() * 400;
       const typingTime = replyLength * 26;
       const targetDuration = Math.min(Math.max(readingTime + typingTime, 1400), 4500);
 
@@ -146,17 +186,50 @@ export function ChatProvider({ children }) {
         await new Promise((resolve) => setTimeout(resolve, remainingTime));
       }
 
-      const aiMsg = {
-        id: `ai-${Date.now()}`,
+      const rawReply = (response?.reply || '').trim();
+      let bubbles = [];
+      if (rawReply.includes('\n')) {
+        bubbles = rawReply.split('\n').map((s) => s.trim()).filter(Boolean);
+      } else {
+        const splitMatch = rawReply.match(/^(.+?[.!,])\s+((?:waise\s+|aur\s+|tu\s+|tum\s+|kya\s+)?.+\?)$/i);
+        if (splitMatch && splitMatch[1].length >= 10 && splitMatch[2].length >= 6) {
+          bubbles = [splitMatch[1].trim(), splitMatch[2].trim()];
+        } else {
+          bubbles = [rawReply];
+        }
+      }
+
+      const firstBubble = bubbles[0] || rawReply;
+      const aiMsg1 = {
+        id: `ai-${Date.now()}-1`,
         role: 'assistant',
-        content: response.reply,
+        content: firstBubble,
         timestamp: new Date().toISOString(),
       };
 
       setMessagesByProfile((prev) => ({
         ...prev,
-        [profileId]: [...(prev[profileId] || []), aiMsg],
+        [profileId]: [...(prev[profileId] || []), aiMsg1],
       }));
+
+      if (bubbles.length > 1) {
+        for (let i = 1; i < bubbles.length; i++) {
+          setIsTyping(true);
+          const gap = 800 + Math.random() * 450;
+          await new Promise((resolve) => setTimeout(resolve, gap));
+          const aiMsgNext = {
+            id: `ai-${Date.now()}-${i + 1}`,
+            role: 'assistant',
+            content: bubbles[i],
+            timestamp: new Date().toISOString(),
+          };
+          setMessagesByProfile((prev) => ({
+            ...prev,
+            [profileId]: [...(prev[profileId] || []), aiMsgNext],
+          }));
+        }
+      }
+
       setLastFailedMessage(null);
       setError(null);
     } catch (err) {
@@ -182,7 +255,9 @@ export function ChatProvider({ children }) {
       setLastFailedMessage(null);
       setError(null);
     } catch (err) {
-      setError(err.message || 'Failed to clear conversation.');
+      // The clear-chat modal owns this error state; do not show a
+      // message-send failure underneath it.
+      setError(null);
       throw err;
     }
   }, [userId]);

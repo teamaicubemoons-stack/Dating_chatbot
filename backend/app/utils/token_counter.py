@@ -47,7 +47,7 @@ def fits_in_context(
     system_prompt: str,
     history: List[Dict[str, str]],
     user_message: str,
-    max_tokens: int = 6000,
+    max_tokens: int = 16000,
 ) -> bool:
     """Return True if the full prompt assembly fits within max_tokens."""
     total = (

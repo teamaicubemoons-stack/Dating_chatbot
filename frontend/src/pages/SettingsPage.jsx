@@ -266,7 +266,7 @@ export default function SettingsPage() {
           {/* Version info */}
           <div className="settings-footer">
             <p>Spark AI Companion Platform · v1.1.0</p>
-            <p>FastAPI · React · Groq LLaMA 3.3 70B · Claude 3.5 Haiku · Low-Memory RAG</p>
+            <p>FastAPI · React · Groq LLaMA 3.3 70B · OpenAI GPT-4o mini · Low-Memory RAG</p>
           </div>
 
         </div>

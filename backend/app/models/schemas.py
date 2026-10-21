@@ -8,7 +8,7 @@ DB persistence, the other handles API serialization/validation.
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +66,25 @@ class ProfileCreate(BaseModel):
     relationship_intent: Optional[str] = Field("Looking for fun conversations & genuine connection", max_length=200)
     avatar_url: Optional[str] = Field("", description="Image URL or avatar path")
     initial_opener: Optional[str] = Field("", description="Custom greeting opener")
+    humor_style: Optional[str] = Field("", max_length=160)
+    playfulness: float = Field(0.5, ge=0.0, le=1.0)
+    confidence: float = Field(0.5, ge=0.0, le=1.0)
+    emotional_expressiveness: float = Field(0.5, ge=0.0, le=1.0)
+    flirting_style: Optional[str] = Field("warm and respectful", max_length=160)
+    flirting_intensity: int = Field(1, ge=0, le=4)
+    preferred_topics: List[str] = Field(default_factory=list, max_length=12)
+    dislikes_and_boundaries: List[str] = Field(default_factory=list, max_length=12)
+    language_preferences: List[str] = Field(default_factory=list, max_length=8)
+    emoji_frequency: str = Field("occasional", pattern="^(never|rare|occasional|frequent)$")
+    response_length: str = Field("short, conversational", max_length=80)
+
+    @field_validator("preferred_topics", "personality_traits", "interests", "dislikes_and_boundaries", "language_preferences")
+    @classmethod
+    def validate_configured_lists(cls, values):
+        for value in values or []:
+            if not isinstance(value, str) or not value.strip() or len(value.strip()) > 100:
+                raise ValueError("configuration entries must be non-empty strings of at most 100 characters")
+        return [value.strip() for value in (values or [])]
 
 
 # ---------------------------------------------------------------------------

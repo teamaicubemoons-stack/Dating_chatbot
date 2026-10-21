@@ -5,9 +5,9 @@ APScheduler background job that periodically probes Groq API availability.
 
 Schedule: every 12 hours (configurable via settings.groq_health_check_interval_hours).
 Behavior:
-  - ONLY runs a check if current_provider == "claude" (no-op otherwise).
+  - ONLY runs a check if current_provider != "groq" (no-op otherwise).
   - If Groq responds successfully → switches DB back to "groq".
-  - If Groq still fails           → keeps "claude", updates last_checked_at timestamp.
+  - If Groq still fails           → keeps fallback provider, updates last_checked_at timestamp.
 
 This allows the system to self-heal automatically when Groq's daily quota resets,
 without any manual intervention or visible disruption to users.

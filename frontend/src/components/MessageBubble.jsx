@@ -18,15 +18,25 @@ function formatTime(iso) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export default function MessageBubble({ message, profileName, avatarChar }) {
+export default function MessageBubble({ message, profileName, avatarUrl, avatarChar }) {
   const isUser = message.role === 'user';
+  const [avatarErr, setAvatarErr] = React.useState(false);
 
   return (
     <div className={`message-bubble ${isUser ? 'message-bubble--user' : 'message-bubble--ai'}`}>
-      {/* AI avatar dot */}
+      {/* AI avatar photo */}
       {!isUser && (
-        <div className="message-bubble__avatar" aria-hidden="true">
-          {avatarChar || '✦'}
+        <div className="message-bubble__avatar" aria-hidden="true" style={{ overflow: 'hidden' }}>
+          {avatarUrl && !avatarErr ? (
+            <img
+              src={avatarUrl}
+              alt=""
+              onError={() => setAvatarErr(true)}
+              style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }}
+            />
+          ) : (
+            avatarChar || '✦'
+          )}
         </div>
       )}
 

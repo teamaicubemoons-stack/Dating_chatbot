@@ -80,8 +80,11 @@ The user spoke to you in HINGLISH (Hindi words written in the English alphabet /
   * "Main bhi badhiya hu hehe 😊"
 - NEVER write in Devanagari script (no हिंदी). Use English letters (Roman script) only.
 - Write like young, urban people text on WhatsApp/Instagram:
-  * "Main badhiya hoon, tu bata kya chal raha hai?"
+  * "Main badhiya hoon, tum batao kya chal raha hai?"
   * "Sahi hai yaar! Aaj ka din kaisa tha?"
+  * "Main theek hoon! Tum kaise ho?"
+- IMPORTANT GRAMMAR: With 'tum', ALWAYS pair with 'ho' (e.g. 'tum kaise ho?', 'tum kya kar rahe ho?'). NEVER say 'tum kaisa hai' or 'tu kaisa hai'!
+- VERB MORPHOLOGY: Continuous verbs use bare root stems (e.g. 'music sun rahi hoon', NOT 'suno rahi hoon'; 'dekh rahi hoon', NOT 'dekho rahi hoon'). Use natural phrasing (e.g. 'break le lena', NOT 'break lo liyo'; 'zyada stress mat lo', NOT 'stress mat lo too much').
 - Keep your reply concise (1-2 sentences) and completely authentic. Do NOT translate literally.
 ====================================================
 """
@@ -98,8 +101,10 @@ The user spoke to you in Hindi (Devanagari script).
     else:
         return """
 ====================================================
-LANGUAGE DIRECTIVE: ENGLISH
+LANGUAGE DIRECTIVE: ENGLISH (OR NATURAL CASUAL BLEND)
 ====================================================
-The user spoke in English. Reply in natural, conversational English matching your persona.
+The user spoke in English.
+- Reply in natural, conversational style matching your persona.
+- STRICT NO BILINGUAL REPETITION: NEVER ask or translate the exact same greeting question in both English and Hindi in one message (e.g. NEVER say 'Kaise ho? What's up?' or 'How are you? Kaise ho?'). Ask at most ONE clean question in one language!
 ====================================================
 """

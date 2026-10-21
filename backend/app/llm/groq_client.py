@@ -85,6 +85,25 @@ class GroqClient(BaseLLMClient):
                 raw_content = response.choices[0].message.content
                 reply = (raw_content or "").strip()
 
+                usage = getattr(response, "usage", None)
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) if usage else 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
+                total_tokens = getattr(usage, "total_tokens", prompt_tokens + completion_tokens) if usage else (prompt_tokens + completion_tokens)
+
+                # Prominently display LLM response metrics in terminal
+                metrics_display = (
+                    "\n" + "=" * 65 + "\n"
+                    " [LLM RESPONSE METRICS]\n"
+                    f"  Provider       : Groq\n"
+                    f"  Model          : {self._model}\n"
+                    f"  Latency        : {elapsed:.2f}s\n"
+                    f"  Input Tokens   : {prompt_tokens} (prompt)\n"
+                    f"  Output Tokens  : {completion_tokens} (completion)\n"
+                    f"  Total Tokens   : {total_tokens}\n"
+                    + "=" * 65 + "\n"
+                )
+                print(metrics_display, flush=True)
+
                 if not reply:
                     logger.warning(
                         "Groq returned empty response (0 chars) after %.2fs — triggering fallback",
@@ -92,7 +111,10 @@ class GroqClient(BaseLLMClient):
                     )
                     raise LLMClientError("Groq returned empty response")
 
-                logger.info("Groq response received in %.2fs (%d chars)", elapsed, len(reply))
+                logger.info(
+                    "Groq Metrics | Model: %s | Latency: %.2fs | In: %d | Out: %d | Total: %d",
+                    self._model, elapsed, prompt_tokens, completion_tokens, total_tokens
+                )
                 return reply
 
             except Exception as exc:

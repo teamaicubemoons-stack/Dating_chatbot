@@ -21,7 +21,13 @@ export default function ClearChatModal({ isOpen, profile, onClose, onConfirmed }
       await onConfirmed(profile.id);
       onClose();
     } catch (err) {
-      setError(err.message || 'Failed to clear chat. Please try again.');
+      const message = err?.message || '';
+      const isReplyTimeoutMessage = message.includes('Reply aane mein thoda time lag gaya');
+      setError(
+        isReplyTimeoutMessage
+          ? 'Chat history clear nahi ho payi. Connection check karke dobara try karo.'
+          : message || 'Chat history clear nahi ho payi. Please try again.'
+      );
     } finally {
       setClearing(false);
     }

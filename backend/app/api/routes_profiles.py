@@ -136,6 +136,18 @@ def create_profile(body: ProfileCreate, db: Session = Depends(get_db)):
         "personality_traits": traits_list,
         "tone": body.tone or "warm & playful",
         "relationship_intent": body.relationship_intent or "",
+        "humor_style": (body.humor_style or "").strip(),
+        "playfulness": body.playfulness,
+        "confidence": body.confidence,
+        "emotional_expressiveness": body.emotional_expressiveness,
+        "flirting_style": (body.flirting_style or "warm and respectful").strip(),
+        "flirting_intensity": body.flirting_intensity,
+        "preferred_topics": body.preferred_topics or body.interests or [],
+        "fictional_interests": body.interests or [],
+        "dislikes_and_boundaries": body.dislikes_and_boundaries,
+        "language_preferences": body.language_preferences,
+        "emoji_frequency": body.emoji_frequency,
+        "response_length": body.response_length,
         "backstory": full_backstory,
         "initial_openers": openers,
         "conversation_style_rules": [
@@ -238,4 +250,3 @@ def delete_profile(profile_id: str, db: Session = Depends(get_db)):
         "profile_id": profile_id,
         "message": f"Profile '{profile_id}' was successfully deleted.",
     }
-

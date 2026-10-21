@@ -11,6 +11,7 @@ Automated QA Checklist validation for Conversational Consistency:
 """
 
 import pytest
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from unittest.mock import MagicMock, patch
@@ -19,7 +20,9 @@ from app.utils.time_context import get_current_context
 from app.memory.memory_extractor import (
     detect_pronoun_preference, detect_user_gender_cue, extract_candidate_memories
 )
-from app.chat.prompt_builder import build_final_prompt
+from app.chat.prompt_builder import (
+    build_final_prompt, is_user_asked_origin_message, extract_mentioned_venue
+)
 from app.chat.response_validator import validate_and_clean_response
 
 
@@ -32,6 +35,45 @@ def test_time_context_generation():
     assert "day_period" in ctx
     assert ctx["timezone"] == "Asia/Kolkata"
     assert ctx["day_period"] in ("morning", "afternoon", "evening", "night")
+    assert "verified_event_context" in ctx
+
+
+def test_past_festival_status_and_user_correction():
+    from app.chat.prompt_builder import (
+        build_final_prompt,
+        is_event_timing_correction_message,
+    )
+
+    assert is_event_timing_correction_message("lekin navratri toh over ho gaya") is True
+    persona = {
+        "id": "profile_riya",
+        "name": "Riya",
+        "gender": "female",
+        "city": "Delhi",
+        "system_prompt_template": "You are {name}.",
+    }
+    context = {
+        "current_datetime": "2026-10-21T13:00:00+05:30",
+        "current_date": "2026-10-21",
+        "day_name": "Wednesday",
+        "local_time": "01:00 PM",
+        "timezone": "Asia/Kolkata",
+        "day_period": "afternoon",
+        "verified_event_context": {
+            "region": "India",
+            "events": {
+                "navratri": {"status": "past", "date": "2026-10-20"},
+                "dussehra": {"status": "past", "date": "2026-10-20"},
+                "diwali": {"status": "upcoming", "date": "2026-11-08"},
+            },
+        },
+    }
+    prompt, _ = build_final_prompt(
+        persona, "", [], "lekin navratri toh over ho gaya, ab garba kaise?", time_context=context
+    )
+    assert "USER EVENT-TIMING CORRECTION" in prompt
+    assert "'status': 'past'" in prompt
+    assert "do not describe it as ongoing" in prompt
 
 
 def test_pronoun_preference_detection():
@@ -204,3 +246,178 @@ def test_festival_and_meetup_directives_in_prompt():
         user_message="mera to office 6:30 ko off hoga",
     )
     assert "OFFICE SCHEDULE CONTEXT DIRECTIVE" in prompt_off
+
+
+def test_tum_pronoun_verb_agreement_sanitizer():
+    """Verify that ungrammatical 'tum kaisa hai' and similar slips are corrected to 'tum kaise ho'."""
+    # 1. Direct screenshot case: 'Main badhiya hu yaar! 😊 tum kaisa hai?'
+    raw = "Main badhiya hu yaar! 😊 tum kaisa hai?"
+    cleaned = validate_and_clean_response(
+        raw_response=raw,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "tum kaisa hai" not in cleaned
+    assert "tum kaise ho?" in cleaned
+
+    # 2. 'tu kaisa hai' slip
+    raw_tu = "Main mast hoon! tu kaisa hai?"
+    cleaned_tu = validate_and_clean_response(
+        raw_response=raw_tu,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "tu kaisa hai" not in cleaned_tu
+    assert "tum kaise ho?" in cleaned_tu
+
+    # 3. 'tum kya kar raha hai' -> 'tum kya kar rahe ho'
+    raw_verb = "aur tum bata, tum kya kar raha hai abhi?"
+    cleaned_verb = validate_and_clean_response(
+        raw_response=raw_verb,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "tum batao" in cleaned_verb
+    assert "tum kya kar rahe ho" in cleaned_verb
+
+    # 4. Habitual verb: 'tum kahan rehta hai' -> 'tum kahan rehte ho'
+    raw_hab = "Waise tum kahan rehta hai?"
+    cleaned_hab = validate_and_clean_response(
+        raw_response=raw_hab,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "tum kahan rehte ho?" in cleaned_hab
+
+    # 5. Gender alignment with male user: 'tum kaisi ho' -> 'tum kaise ho'
+    raw_gender = "tum kaisi ho?"
+    cleaned_gender = validate_and_clean_response(
+        raw_response=raw_gender,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+        user_gender="male",
+    )
+    assert cleaned_gender.strip() == "tum kaise ho?"
+
+
+def test_hinglish_verb_morphology_and_phrasing_sanitizer():
+    """Verify that continuous aspect verbs (suno rahi -> sun rahi), double-verbs (lo liyo -> le lena), and awkward too much are sanitized."""
+    # 1. Exact user screenshot case:
+    raw = "Main bas chill kar rahi hoon abhi, music suno rahi hoon thoda. Tum stress mat lo too much, break lo liyo kabhi kabhi!"
+    cleaned = validate_and_clean_response(
+        raw_response=raw,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "suno rahi" not in cleaned
+    assert "sun rahi" in cleaned
+    assert "lo liyo" not in cleaned
+    assert "break le lena" in cleaned
+    assert "stress mat lo too much" not in cleaned
+    assert "zyada stress mat lo" in cleaned
+
+    # 2. Continuous aspect imperative -o slips
+    raw_verbs = "main dekho rahi hoon aur tum kya karo rahe ho? Wo sab bolo rahe the."
+    cleaned_verbs = validate_and_clean_response(
+        raw_response=raw_verbs,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "dekho rahi" not in cleaned_verbs
+    assert "dekh rahi" in cleaned_verbs
+    assert "karo rahe" not in cleaned_verbs
+    assert "kar rahe" in cleaned_verbs
+    assert "bolo rahe" not in cleaned_verbs
+    assert "bol rahe" in cleaned_verbs
+
+    # 3. Slang 'liyo' compound verbs
+    raw_liyo = "pehle kaam kar liyo, phir aaram se so liyo."
+    cleaned_liyo = validate_and_clean_response(
+        raw_response=raw_liyo,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "kar liyo" not in cleaned_liyo
+    assert "kar lena" in cleaned_liyo
+    assert "so liyo" not in cleaned_liyo
+    assert "so lena" in cleaned_liyo
+
+
+def test_dating_app_match_and_venue_honesty():
+    """Verify that match origin reciprocal questions and unknown venue honesty are enforced."""
+    # 1. Detection of origin inquiry
+    assert is_user_asked_origin_message("humare side to navratri chal rha hai wese tum kaha se ho?") is True
+    assert is_user_asked_origin_message("where are you from?") is True
+    assert is_user_asked_origin_message("kya chal raha hai?") is False
+
+    # 2. Extraction of mentioned venue/ground
+    assert extract_mentioned_venue("mai BTI ground jane ka socha hu kl saturday ko") == "BTI ground"
+    assert extract_mentioned_venue("marine drive chalte hain") == "marine drive"
+    assert extract_mentioned_venue("kuch nahi normal kaam hai") is None
+
+    # 3. Prompt builder injection for Riya Kapoor when asked origin & venue
+    riya_persona = {
+        "id": "profile_riyakapoor_1aab25",
+        "name": "Riya Kapoor",
+        "gender": "female",
+        "city": "Delhi",
+        "system_prompt_template": "You are {name}.",
+    }
+
+    # Origin query prompt
+    prompt_orig, _ = build_final_prompt(
+        persona=riya_persona,
+        rag_context="",
+        chat_history=[],
+        user_message="wese tum kaha se ho?",
+    )
+    assert "ORIGIN & RECIPROCAL DISCOVERY DIRECTIVE" in prompt_orig
+    assert "MANDATORILY ASK BACK WHERE THE USER IS FROM" in prompt_orig
+
+    # Unknown venue query prompt (BTI ground)
+    prompt_venue, _ = build_final_prompt(
+        persona=riya_persona,
+        rag_context="",
+        chat_history=[{"role": "user", "content": "hello"}],
+        user_message="mai BTI ground jane ka socha hu kl saturday ko",
+    )
+    assert "UNKNOWN VENUE & GEOGRAPHIC HONESTY DIRECTIVE" in prompt_venue
+    assert "BTI ground" in prompt_venue
+    assert "STRICTLY NEVER pretend to know it" in prompt_venue
+
+    # 4. Response validator strips hallucinated venue familiarity for Riya
+    raw_hallucination = "Achha sahi hai! BTI ground mein accha vibe hota hai usually 😌 Kal Saturday ko phir masti ho jayegi"
+    cleaned = validate_and_clean_response(
+        raw_response=raw_hallucination,
+        persona_name="Riya Kapoor",
+        preferred_pronoun="tum",
+    )
+    assert "BTI ground mein accha vibe hota hai" not in cleaned
+    assert "Yeh kaunse city ya area mein hai waise?" in cleaned
+
+
+def test_diya_chill_kar_and_festival_continuity():
+    """Verify that 'Chill kar' is converted to 'Chill karo' and Navratri continuity is maintained."""
+    # 1. 'Chill kar' and 'tum se janne ka curiosity'
+    raw_diya = "Haan haan, mujhe bhi tum se janne ka curiosity hai! Chill kar, time hai sab kuch ke liye."
+    cleaned_diya = validate_and_clean_response(
+        raw_response=raw_diya,
+        persona_name="Diya",
+        preferred_pronoun="tum",
+    )
+    assert not re.search(r"\bchill\s+kar\b", cleaned_diya.lower())
+    assert "chill karo" in cleaned_diya.lower()
+    assert "tumhe janne ki curiosity" in cleaned_diya.lower()
+
+    # 2. Navratri ongoing continuity
+    raw_nav = "Navratri aane wali hai toh vibe toh banne lagi hai yaar! Par exact dates ya events maine abhi check nahi kiye honestly."
+    cleaned_nav = validate_and_clean_response(
+        raw_response=raw_nav,
+        persona_name="Diya",
+        preferred_pronoun="tum",
+        user_message="Accha abhi navratri kaisa chal rha hai tumhare side",
+    )
+    assert "navratri aane wali hai" not in cleaned_nav.lower()
+    assert "exact dates ya events maine abhi check nahi kiye" not in cleaned_nav.lower()
+
+

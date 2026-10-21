@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _CONFIGS_DIR = Path(__file__).parent / "configs"
 
 # Fields that must be present in every valid persona config
-_REQUIRED_FIELDS = {"id", "name", "backstory", "system_prompt_template"}
+_REQUIRED_FIELDS = {"id", "name", "backstory"}
 
 # Excluded from public API responses (never sent to frontend)
 _PRIVATE_FIELDS = {"system_prompt_template", "conversation_style_rules"}
@@ -120,7 +120,10 @@ def build_system_prompt(persona: Dict[str, Any], rag_context: str = "") -> str:
     Returns:
         Fully rendered system prompt string, ready for the LLM.
     """
-    template: str = persona["system_prompt_template"]
+    template: str = persona.get(
+        "system_prompt_template",
+        "You are {name}, {age} years old, living in {city}, {country}. Tone: {tone}. Backstory: {backstory}."
+    )
 
     class SafeDict(dict):
         def __missing__(self, key):
@@ -129,6 +132,8 @@ def build_system_prompt(persona: Dict[str, Any], rag_context: str = "") -> str:
     params = {
         "name": persona.get("name", ""),
         "age": persona.get("age", ""),
+        "city": persona.get("city", ""),
+        "country": persona.get("country", ""),
         "personality_traits": ", ".join(persona.get("personality_traits", [])),
         "tone": persona.get("tone", ""),
         "backstory": persona.get("backstory", ""),
@@ -172,13 +177,23 @@ def _apply_defaults(data: Dict[str, Any]) -> Dict[str, Any]:
     data.setdefault("education", "")
     data.setdefault("college_name", None)
     data.setdefault("profession", "")
-    data.setdefault("conversation_style_rules", [
-        "Texting style: write like a real person typing on a smartphone — mostly 1 to 2 short sentences.",
-        "Zero politics or religious debates: casually and playfully deflect heavy topics like a real person changing the subject, never say 'As an AI'.",
-    ])
-    data.setdefault("initial_openers", [
-        "Hey 🙂 How's your day going?",
-        "Hey. What are you up to today?",
-        "Hey. Glad you're here."
-    ])
+    data.setdefault("system_prompt_template", "You are {name}, {age} years old, living in {city}, {country}. Tone: {tone}. Backstory: {backstory}.")
+    data.setdefault("conversation_style_rules", [])
+    data.setdefault("initial_openers", [])
+    # Optional conversational controls are deliberately data-driven.  Keeping
+    # safe defaults here means older profile files remain compatible.
+    data.setdefault("humor_style", "")
+    data.setdefault("playfulness", 0.5)
+    data.setdefault("confidence", 0.5)
+    data.setdefault("emotional_expressiveness", 0.5)
+    data.setdefault("flirting_style", "warm and respectful")
+    data.setdefault("flirting_intensity", 1)
+    data.setdefault("preferred_topics", data.get("interests", []))
+    data.setdefault("fictional_interests", data.get("interests", []))
+    data.setdefault("dislikes_and_boundaries", [])
+    data.setdefault("language_preferences", [])
+    data.setdefault("emoji_frequency", "occasional")
+    data.setdefault("response_length", "short, conversational")
+    data.setdefault("sample_dialogues", [])
+    data.setdefault("vocabulary", [])
     return data

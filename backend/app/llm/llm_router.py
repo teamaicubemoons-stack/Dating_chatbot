@@ -1,23 +1,10 @@
 """
 llm/llm_router.py
 -----------------
-LLM routing engine. THIS IS THE ONLY FILE that knows about both providers.
+LLM routing engine.
 
-Routing rules (exact spec):
-  1. Default provider at startup: "groq".
-  2. On every chat call:
-     - If current_provider == "groq"  → call GroqClient.
-       • On GroqQuotaExceededError   → switch DB to "claude", retry with ClaudeClient.
-         The user receives a seamless reply — no error, no visible delay added.
-     - If current_provider == "claude" → call ClaudeClient directly (skip Groq test).
-  3. Background health-check job (APScheduler, every 12h) probes Groq:
-     - Runs ONLY when current_provider == "claude".
-     - If Groq responds OK → flip DB back to "groq".
-     - If still failing   → keep "claude", update last_checked_at.
-  4. Nothing in this file leaks provider names to the API or chat layers.
-
-The DB-backed LLMStatus row (id=1) is the single source of truth for active provider.
-All DB writes use a short-lived session to prevent connection leaks.
+NOTE: Groq failover code is kept intact but commented out below for testing OpenAI directly.
+It can easily be re-enabled later by uncommenting the designated section.
 """
 
 import logging
@@ -27,6 +14,7 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 
 from app.llm.groq_client import GroqClient
+from app.llm.openai_client import OpenAIClient
 from app.llm.claude_client import ClaudeClient
 from app.models.db_models import LLMStatus
 from app.utils.error_handler import GroqQuotaExceededError, LLMClientError
@@ -34,8 +22,8 @@ from app.utils.error_handler import GroqQuotaExceededError, LLMClientError
 logger = logging.getLogger(__name__)
 
 # Lazy singletons — created on first use, not at import time.
-# This prevents startup crashes when API keys are not yet configured.
 _groq_client: GroqClient | None = None
+_openai_client: OpenAIClient | None = None
 _claude_client: ClaudeClient | None = None
 
 
@@ -46,6 +34,13 @@ def _get_groq() -> GroqClient:
     return _groq_client
 
 
+def _get_openai() -> OpenAIClient:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = OpenAIClient()
+    return _openai_client
+
+
 def _get_claude() -> ClaudeClient:
     global _claude_client
     if _claude_client is None:
@@ -54,10 +49,10 @@ def _get_claude() -> ClaudeClient:
 
 
 def _get_or_create_status(db: Session) -> LLMStatus:
-    """Fetch the canonical LLMStatus row, creating it (as Groq) if absent."""
+    """Fetch the canonical LLMStatus row, creating it (as OpenAI for testing) if absent."""
     status = db.get(LLMStatus, 1)
     if status is None:
-        status = LLMStatus(id=1, current_provider="groq", groq_available=True)
+        status = LLMStatus(id=1, current_provider="openai", groq_available=False)
         db.add(status)
         db.commit()
         db.refresh(status)
@@ -88,86 +83,72 @@ def route_and_generate(
     """
     Main entry point for all chat generation calls.
 
-    Reads the active provider from DB, calls the appropriate client,
-    handles fallback silently, and returns the AI reply string.
-
-    Args:
-        db:           SQLAlchemy session (caller-owned, caller closes).
-        system_prompt: Fully constructed system prompt from prompt_builder.
-        chat_history:  Prior turns as [{"role": ..., "content": ...}].
-        user_message:  Current user input.
-
-    Returns:
-        AI-generated reply string.
-
-    Raises:
-        LLMClientError: if both providers fail (should be extremely rare).
+    Currently configured for testing: Groq failover logic is commented out
+    so OpenAI is used directly for all responses.
     """
     status = _get_or_create_status(db)
-    provider = status.current_provider
     import time
     t_start = time.perf_counter()
 
-    if provider == "groq":
-        try:
-            res = _get_groq().generate_response(system_prompt, chat_history, user_message)
-            logger.info("Routing: Groq served request in %.2fs", time.perf_counter() - t_start)
-            return res
-        except GroqQuotaExceededError:
-            # Quota hit — silently switch to Claude and retry the same request
-            logger.warning("Groq quota exceeded after %.2fs; switching to Claude (transparent to user)", time.perf_counter() - t_start)
-            _set_provider(db, "claude", groq_available=False)
-            try:
-                res = _get_claude().generate_response(system_prompt, chat_history, user_message)
-                logger.info("Routing: Claude fallback served request in %.2fs total", time.perf_counter() - t_start)
-                return res
-            except Exception as c_err:
-                logger.warning("Claude fallback failed (%s); reverting DB to Groq", c_err)
-                _set_provider(db, "groq", groq_available=True)
-                raise
-        except LLMClientError as err:
-            # Non-quota Groq error — still try Claude as emergency fallback
-            logger.error("Groq non-quota error after %.2fs (%s); attempting Claude emergency fallback", time.perf_counter() - t_start, err)
-            try:
-                res = _get_claude().generate_response(system_prompt, chat_history, user_message)
-                logger.info("Routing: Claude emergency fallback served request in %.2fs total", time.perf_counter() - t_start)
-                return res
-            except Exception as c_err:
-                logger.warning("Claude emergency fallback failed (%s)", c_err)
-                raise
+    # =========================================================================
+    # [TEMPORARILY COMMENTED OUT FOR TESTING OPENAI DIRECTLY]
+    # To re-enable Groq primary + OpenAI fallback later, uncomment this block:
+    # -------------------------------------------------------------------------
+    # provider = status.current_provider
+    # if provider == "groq":
+    #     try:
+    #         res = _get_groq().generate_response(system_prompt, chat_history, user_message)
+    #         logger.info("Routing: Groq served request in %.2fs", time.perf_counter() - t_start)
+    #         return res
+    #     except GroqQuotaExceededError:
+    #         # Quota hit — silently switch to OpenAI and retry the same request
+    #         logger.warning("Groq quota exceeded after %.2fs; switching to OpenAI (transparent to user)", time.perf_counter() - t_start)
+    #         _set_provider(db, "openai", groq_available=False)
+    #         try:
+    #             res = _get_openai().generate_response(system_prompt, chat_history, user_message)
+    #             logger.info("Routing: OpenAI fallback served request in %.2fs total", time.perf_counter() - t_start)
+    #             return res
+    #         except Exception as o_err:
+    #             logger.warning("OpenAI fallback failed (%s); reverting DB to Groq", o_err)
+    #             _set_provider(db, "groq", groq_available=True)
+    #             raise
+    #     except LLMClientError as err:
+    #         # Non-quota Groq error — still try OpenAI as emergency fallback
+    #         logger.error("Groq non-quota error after %.2fs (%s); attempting OpenAI emergency fallback", time.perf_counter() - t_start, err)
+    #         try:
+    #             res = _get_openai().generate_response(system_prompt, chat_history, user_message)
+    #             logger.info("Routing: OpenAI emergency fallback served request in %.2fs total", time.perf_counter() - t_start)
+    #             return res
+    #         except Exception as o_err:
+    #             logger.warning("OpenAI emergency fallback failed (%s)", o_err)
+    #             raise
+    #
+    # else:  # provider in ["openai", "claude"]
+    #     try:
+    #         res = _get_openai().generate_response(system_prompt, chat_history, user_message)
+    #         logger.info("Routing: OpenAI served request in %.2fs", time.perf_counter() - t_start)
+    #         return res
+    #     except Exception as o_err:
+    #         logger.warning("OpenAI unavailable (%s); attempting Groq recovery", o_err)
+    #         _set_provider(db, "groq", groq_available=True)
+    #         res = _get_groq().generate_response(system_prompt, chat_history, user_message)
+    #         logger.info("Routing: Groq recovery served request in %.2fs", time.perf_counter() - t_start)
+    #         return res
+    # =========================================================================
 
-    else:  # provider == "claude"
-        try:
-            res = _get_claude().generate_response(system_prompt, chat_history, user_message)
-            logger.info("Routing: Claude served request in %.2fs", time.perf_counter() - t_start)
-            return res
-        except Exception as c_err:
-            logger.warning("Claude unavailable (%s); attempting Groq recovery", c_err)
-            _set_provider(db, "groq", groq_available=True)
-            res = _get_groq().generate_response(system_prompt, chat_history, user_message)
-            logger.info("Routing: Groq recovery served request in %.2fs", time.perf_counter() - t_start)
-            return res
+    # Directly serve all requests via OpenAI for testing:
+    if status.current_provider != "openai":
+        _set_provider(db, "openai", groq_available=False)
+
+    res = _get_openai().generate_response(system_prompt, chat_history, user_message)
+    logger.info("Routing: OpenAI direct served request in %.2fs", time.perf_counter() - t_start)
+    return res
 
 
 def run_groq_health_check(db: Session) -> None:
     """
     Called by APScheduler every 12 hours.
-    Only probes Groq when current_provider == "claude" (no-op otherwise).
-    Silently updates DB based on result.
+    (Temporarily paused while Groq is commented out for testing OpenAI directly).
     """
-    status = _get_or_create_status(db)
-    if status.current_provider != "claude":
-        logger.debug("Health check skipped — Groq is already active provider")
-        return
-
-    logger.info("Running Groq health check probe...")
-    groq_ok = _get_groq().health_check()
-
-    if groq_ok:
-        _set_provider(db, "groq", groq_available=True)
-        logger.info("Groq restored — switched back to Groq as primary provider")
-    else:
-        # Just update the timestamp, keep Claude
-        status.last_checked_at = datetime.utcnow()
-        db.commit()
-        logger.info("Groq still unavailable — remaining on Claude")
+    logger.debug("Groq health check paused — testing OpenAI directly")
+    return

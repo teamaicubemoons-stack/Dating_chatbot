@@ -20,13 +20,32 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
   const { onToggleMobileNav } = outletContext;
-  const { loadHistory, setActiveProfileId, clearConversation } = useChatContext();
+  const { loadHistory, setActiveProfileId, clearConversation, isTyping } = useChatContext();
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showClearChatModal, setShowClearChatModal] = useState(false);
   const [topbarImgError, setTopbarImgError] = useState(false);
+
+  // Dynamic Activity Status based on typing and daily schedule
+  const currentHour = new Date().getHours();
+  let statusText = 'Active now';
+  let isDotActive = true;
+
+  if (isTyping) {
+    statusText = 'Typing...';
+    isDotActive = true;
+  } else if (currentHour >= 2 && currentHour <= 6) {
+    statusText = 'Active 45m ago';
+    isDotActive = false;
+  } else if (currentHour >= 14 && currentHour <= 15) {
+    statusText = 'Active 8m ago';
+    isDotActive = false;
+  } else {
+    statusText = 'Active now';
+    isDotActive = true;
+  }
 
   useEffect(() => {
     let mounted = true;
@@ -101,8 +120,15 @@ export default function ChatPage() {
           <div className="chat-topbar__meta">
             <span className="chat-topbar__name">{profile.name}</span>
             <span className="chat-topbar__status">
-              <span className="chat-topbar__online-dot" aria-hidden="true" />
-              Active now
+              <span
+                className="chat-topbar__online-dot"
+                style={{
+                  background: isDotActive ? '#22c55e' : '#94a3b8',
+                  boxShadow: isDotActive ? '0 0 0 2px rgba(34, 197, 94, 0.2)' : 'none',
+                }}
+                aria-hidden="true"
+              />
+              {statusText}
             </span>
           </div>
         </div>

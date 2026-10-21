@@ -96,7 +96,7 @@ def test_3_hinglish_style_directive():
 
 
 def test_4_direct_ai_identity():
-    """TEST 4: Input 'tumhare bato se esa lg rha hai mujhe ki tum real ni ho esa' triggers real human identity preservation (never claims to be AI)."""
+    """TEST 4: Identity questions require honest AI disclosure."""
     msg1 = "tumhare bato se esa lg rha hai mujhe ki tum real ni ho esa"
     msg2 = "Tum real ho ya AI?"
     assert is_ai_identity_inquiry(msg1) is True
@@ -109,8 +109,8 @@ def test_4_direct_ai_identity():
         chat_history=[],
         user_message=msg1
     )
-    assert "REAL HUMAN IDENTITY PRESERVATION" in system_prompt
-    assert "NEVER admit or claim to be an AI" in system_prompt
+    assert "AI IDENTITY TRANSPARENCY" in system_prompt
+    assert "respond honestly" in system_prompt.lower() or "answer honestly" in system_prompt.lower()
 
 
 def test_5_natural_followup():
@@ -159,16 +159,14 @@ def test_7_language_switching():
 
 def test_8_validator_regression_safety():
     """TEST 8: Validator intercepts AI confession AND does NOT distort legitimate sentences."""
-    # AI confession is strictly intercepted and converted to playful human in-character reply
+    # Honest AI disclosure must not be rewritten into a false human claim.
     disclosure_hinglish = "haha, pakad liya 😅 haan, main AI hu. par baat toh naturally kar sakte hain na :)"
     cleaned_h = validate_and_clean_response(disclosure_hinglish, "Diya")
-    assert "main ai hu" not in cleaned_h.lower()
-    assert "real hi hoon" in cleaned_h.lower()
+    assert "main ai hu" in cleaned_h.lower()
 
     disclosure_english = "Yeah, I'm an AI companion created to chat!"
     cleaned_e = validate_and_clean_response(disclosure_english, "Luna")
-    assert "i'm an ai" not in cleaned_e.lower()
-    assert "definitely real" in cleaned_e.lower()
+    assert "i'm an ai" in cleaned_e.lower()
 
     # Valid sentences with words like 'chill' or 'plan' must NOT be mangled or corrupted
     valid_sentence_1 = "aaj hum dost chill kar rahe the marine drive par"
@@ -289,7 +287,7 @@ def test_12_college_inquiry_boundary_directive():
     )
     assert "COLLEGE & EDUCATION CONVERSATIONAL GUIDANCE" in system_prompt
     assert "Do NOT output a canned or hardcoded sentence" in system_prompt
-    assert "meri profile mein set nahi hai" in system_prompt
+    assert "profile" in system_prompt.lower()
 
 
 def test_13_validator_factual_safety_guard():
@@ -306,9 +304,52 @@ def test_13_validator_factual_safety_guard():
     assert "sahi pakda" in cleaned_valid
 
 
+def test_profile_privacy_does_not_leak_configuration_language():
+    from app.chat.prompt_builder import build_direct_prompt
+
+    prompt, _ = build_direct_prompt(
+        {"name": "Diya", "city": "Raipur", "short_bio": "Design student"},
+        [],
+        "Have you ever been to Delhi?",
+    )
+    assert "PROFILE PRIVACY" in prompt
+    leaked = "Profile me ye mention nahi hai, par Delhi ke cafes explore karne ka mauka mile to zaroor jaungi!"
+    cleaned = validate_and_clean_response(leaked, "Diya")
+    assert "profile" not in cleaned.lower()
+    assert "Delhi ke cafes" in cleaned
+
+
 def test_14_bounded_timeout_settings():
     """TEST 14: Settings ensure bounded request timeouts and retries for latency guarantees."""
     from app.config.settings import settings
     assert settings.llm_request_timeout_seconds <= 15.0
     assert settings.llm_max_retries <= 1
+
+
+def test_15_engaging_conversational_rhythm_and_short_reply_handling():
+    """TEST 15: Prompt contains the React -> Connect -> Add Personality rhythm and short-reply guidance."""
+    from app.chat.prompt_builder import build_direct_prompt, build_final_prompt
+    from app.personas.persona_loader import load_persona
+
+    riya = load_persona("profile_riyakapoor_1aab25")
+    direct_prompt, _ = build_direct_prompt(
+        persona=riya,
+        chat_history=[
+            {"role": "assistant", "content": "lunch abhi kaisa tha? koi special dish ya bas simple khana"},
+        ],
+        user_message="bs normal khana tha",
+    )
+    assert "BREAK THE INTERVIEW TRAP & FOLLOW NATURAL RHYTHM" in direct_prompt
+    assert "React → Connect → Add Personality → Optional Follow-up" in direct_prompt
+    assert "HANDLING SHORT USER REPLIES" in direct_prompt
+    assert "comfort food" in direct_prompt
+
+    final_prompt, _ = build_final_prompt(
+        persona=riya,
+        rag_context="",
+        chat_history=[],
+        user_message="bs badhiya",
+    )
+    assert "BREAK THE INTERVIEW TRAP & FOLLOW NATURAL RHYTHM" in final_prompt
+    assert "React → Connect → Add Personality → Optional Follow-up" in final_prompt
 

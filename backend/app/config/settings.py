@@ -13,10 +13,12 @@ class Settings(BaseSettings):
     # --- LLM API Keys ---
     groq_api_key: str = ""
     anthropic_api_key: str = ""
+    openai_api_key: str = ""
 
     # --- Model Names ---
     groq_model: str = "llama-3.3-70b-versatile"
     claude_model: str = "claude-3-5-haiku-20241022"
+    openai_model: str = "gpt-4o-mini"
 
     # --- Database ---
     database_url: str = "sqlite:///./app.db"
@@ -31,6 +33,7 @@ class Settings(BaseSettings):
     groq_health_check_interval_hours: int = 12
     llm_request_timeout_seconds: float = 12.0  # Fast failover ceiling per provider (never stalls chat)
     llm_max_retries: int = 0                   # 0 retries allows instant failover to Claude on rate limits
+    use_direct_prompt_flow: bool = True        # Direct OpenAI query without restrictive rules; format via Python
 
     model_config = SettingsConfigDict(
         env_file=".env",
