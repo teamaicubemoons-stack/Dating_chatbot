@@ -12,12 +12,15 @@ All heavy lifting is delegated to chat_engine.py — this layer only handles
 HTTP concerns: request parsing, response shaping, error mapping.
 """
 
+import asyncio
 import logging
 from datetime import timezone
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.chat.chat_engine import process_chat_message
+from app.chat.typing_delay import calculate_typing_delay
+from app.config.settings import settings
 from app.memory.memory_store import get_full_history
 from app.models.schemas import ChatRequest, ChatResponse, ConversationHistoryResponse, MessageOut
 from app.utils.error_handler import PersonaNotFoundError, LLMClientError
@@ -39,6 +42,7 @@ async def send_message(
 
     The backend handles all routing, RAG, memory, and LLM selection
     transparently — the response always contains just the reply string.
+    Applies a natural, length-calibrated typing delay before returning.
     """
     try:
         reply = await process_chat_message(
@@ -48,6 +52,19 @@ async def send_message(
             user_message=body.message,
             background_tasks=background_tasks,
         )
+
+        # Apply natural, length-proportional human typing delay
+        if getattr(settings, "enable_typing_delay", True):
+            delay = calculate_typing_delay(reply)
+            if delay > 0:
+                logger.info(
+                    "Pacing response for profile %s: sleeping %.2fs (length: %d chars)",
+                    profile_id,
+                    delay,
+                    len(reply),
+                )
+                await asyncio.sleep(delay)
+
         return ChatResponse(reply=reply, profile_id=profile_id)
 
     except PersonaNotFoundError:

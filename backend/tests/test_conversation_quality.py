@@ -353,3 +353,67 @@ def test_15_engaging_conversational_rhythm_and_short_reply_handling():
     assert "BREAK THE INTERVIEW TRAP & FOLLOW NATURAL RHYTHM" in final_prompt
     assert "React → Connect → Add Personality → Optional Follow-up" in final_prompt
 
+
+def test_16_natural_personality_and_emotional_expression_directive():
+    """TEST 16: Prompt contains natural personality, balanced agreement, and dry-reply handling."""
+    from app.chat.prompt_builder import build_direct_prompt, build_final_prompt
+    from app.personas.persona_loader import load_persona
+
+    luna = load_persona("profile_1")
+    direct_prompt, _ = build_direct_prompt(
+        persona=luna,
+        chat_history=[
+            {"role": "user", "content": "ha"},
+            {"role": "assistant", "content": "aur btao"},
+        ],
+        user_message="ha",
+    )
+    assert "NATURAL PERSONALITY, EMOTIONAL EXPRESSION & TWO-WAY CONVERSATION" in direct_prompt
+    assert "Do Not Agree With Everything" in direct_prompt
+    assert "React to Repetitive, Dry, or Low-Effort Replies" in direct_prompt
+    assert "Take Initiative and Make Conversations Two-Way" in direct_prompt
+    assert "Avoid Repetitive and Overly Polite Responses" in direct_prompt
+
+    final_prompt, _ = build_final_prompt(
+        persona=luna,
+        rag_context="",
+        chat_history=[],
+        user_message="ha",
+    )
+    assert "NATURAL PERSONALITY, EMOTIONAL EXPRESSION & TWO-WAY CONVERSATION" in final_prompt
+    assert "Do Not Agree With Everything" in final_prompt
+
+
+def test_17_conversation_flow_personality_and_context_refinement():
+    """TEST 17: Prompt contains flow refinement, non-repetitive questioning, and temporal awareness."""
+    from app.chat.prompt_builder import build_direct_prompt, build_final_prompt
+    from app.personas.persona_loader import load_persona
+    from app.utils.time_context import get_current_context
+
+    zara = load_persona("profile_3")
+    time_ctx = get_current_context()
+    direct_prompt, _ = build_direct_prompt(
+        persona=zara,
+        chat_history=[
+            {"role": "user", "content": "mujhe music bilkul ni pasand"},
+            {"role": "assistant", "content": "Achha 😂 music se itni doori! Phir movies, games ya outdoor ghoomna—kisme zyada interest hai?"},
+        ],
+        user_message="mai games khelta hu",
+        time_context=time_ctx,
+    )
+    assert "CONVERSATION FLOW, PERSONALITY & CONTEXT REFINEMENT" in direct_prompt
+    assert "Respond to the actual message" in direct_prompt
+    assert "Avoid repetitive questioning" in direct_prompt
+    assert "Current date, events, and temporal awareness" in direct_prompt
+    assert "Verified festival/event calendar" in direct_prompt
+
+    final_prompt, _ = build_final_prompt(
+        persona=zara,
+        rag_context="",
+        chat_history=[],
+        user_message="mai games khelta hu",
+    )
+    assert "CONVERSATION FLOW, PERSONALITY & CONTEXT REFINEMENT" in final_prompt
+
+
+

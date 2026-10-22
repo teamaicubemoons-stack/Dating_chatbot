@@ -127,8 +127,11 @@ def validate_and_clean_response(
                         text = re.sub(r"^(?:kya\s+|waise\s+kya\s+)", "", text, flags=re.I)
                         text = re.sub(r"\?\s*[\U00010000-\U0010ffff\s]*$", "", text).strip()
 
-    # Strip banned canned robotic openers ("Achha suna!", "Sahi hai!", "Hey there!", "Wow,")
-    banned_opener_match = re.match(r"^(?:achha\s+suna|acha\s+suna|sahi\s+hai|hey\s+there|wow)[!.,\s🙂😊]*\s*(.+)$", text, flags=re.I | re.DOTALL)
+    # Strip banned canned robotic openers ("Achha suna!", "Sahi hai!", "Hey there!", "Wow," "haha sahi kaha!", "Bilkul sahi")
+    banned_opener_match = re.match(
+        r"^(?:achha\s+suna|acha\s+suna|sahi\s+hai|bilkul\s+sahi|haha\s+sahi\s+kaha|sahi\s+kaha|hay\s+there|hey\s+there|wow)[!.,\s🙂😊]*\s*(.+)$",
+        text, flags=re.I | re.DOTALL
+    )
     if banned_opener_match:
         text = banned_opener_match.group(1).strip()
         if text and text[0].islower():
@@ -141,6 +144,47 @@ def validate_and_clean_response(
     text = re.sub(r"\baaram\s+se\s+baithey\s+rahe\s+na[.!]*\s*", "", text, flags=re.I)
     text = re.sub(r"\bweekend\s+ka\s+best\s+part\s+toh\s+wahi\s+hota\s+hai[.!]*\s*", "", text, flags=re.I)
     text = re.sub(r"\bphir\s+kya\s+khayal\s+hai\s*\??\s*", "", text, flags=re.I)
+
+    # ── THERAPIST / COUNSELOR CLOSURE PHRASES (screenshots-exact bans) ──
+    # "Kabhi kabhi chill/aaram karna bhi zaroori hota hai"
+    text = re.sub(r"\bkabhi\s+kabhi\s+(?:toh\s+)?(?:chill|aaram|rest|sukoon)\s+(?:karna|karte|lena)\s+bhi\s+zaroori\s+hota\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    # "Jab bhi mood ho, toh share/bata/bol karna"
+    text = re.sub(r"\bjab\s+bhi\s+mood\s+ho[,\s]+(?:toh\s+)?(?:\w+\s+)?(?:share|bata|bol)\s+(?:karna|dena|do)[.!]*\s*", "", text, flags=re.I).strip()
+    # "Aise hi chill/aaram karte raho"
+    text = re.sub(r"\baise\s+hi\s+(?:chill|aaram|rest)\s+(?:karte\s+raho|karo)[.!]*\s*", "", text, flags=re.I).strip()
+    # "Agar kuch baat karni ho toh bata dena"
+    text = re.sub(r"\bagar\s+(?:kuch\s+)?(?:baat|share)\s+(?:karni|karna)\s+ho\s+(?:toh\s+)?bata\s+(?:dena|do)[.!]*\s*", "", text, flags=re.I).strip()
+    # "chalo, koi entertaining/interesting topic nikaalte hain" — forced scripted redirect
+    text = re.sub(r"\bchalo[,\s]+(?:koi\s+)?(?:kuch\s+)?(?:entertaining|interesting|naya|fun)\s+(?:topic|baat|cheez)\s+(?:nikaalte|karte|shuru\s+karte)\s+(?:hain|hai)[.!]*\s*", "", text, flags=re.I).strip()
+    # "apna hi maza/maja hai" — generic validation
+    text = re.sub(r"\bapna\s+hi\s+(?:maja|maza|mazza)\s+(?:hai|hota\s+hai)[.!]*\s*", "", text, flags=re.I).strip()
+    # "Hindi/X mein baatein karne ka apna hi maja hai"
+    text = re.sub(r"\b\w+\s+(?:me|mein)\s+baatein\s+karne\s+ka\s+apna\s+hi\s+(?:maja|maza)\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    # "Kabhi kabhi lambi baatein bhi karni padti hain"
+    text = re.sub(r"\bkabhi\s+kabhi\s+(?:toh\s+)?lambi\s+baatein\s+(?:bhi\s+)?karni\s+padti\s+(?:hain|hai)[.!]*\s*", "", text, flags=re.I).strip()
+    # "theek hai! Jab bhi mood ho" combo
+    text = re.sub(r"\btheek\s+hai[.!,]*\s+jab\s+bhi\s+mood\s+ho\b[^.!?]*[.!]*\s*", "", text, flags=re.I).strip()
+    # Restore capitalization if stripping left lowercase
+    if text and text[0].islower() and len(text) > 1:
+        text = text[0].upper() + text[1:]
+
+    # ── CHATBOT VALIDATION PHRASES (stripped — real humans don't praise every choice) ──
+    # "solid choice hai" / "badhiya choice hai" / "great choice"
+    text = re.sub(r"\b(?:solid|badhiya|great|best|amazing|awesome|perfect|zabardast)\s+choice\s+(?:hai|he|h)[.!]*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bcoffee\s+toh\s+solid\s+choice\s+(?:hai|he|h)[.!]*", "", text, flags=re.I).strip()
+    # "X ka koi comparison nahi hota" — sycophantic echo
+    text = re.sub(r"\b\w+(?:\s+\w+)?\s+ka\s+koi\s+comparison\s+nahi\s+hota[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b\w+(?:\s+\w+)?\s+(?:ki|ke)\s+koi\s+comparison\s+nahi\s+hoti[.!]*\s*", "", text, flags=re.I).strip()
+    # "haha sahi kaha" / "sahi kaha yaar" as standalone validation opener/ender
+    text = re.sub(r"(?:^|[.!]\s*)haha\s+sahi\s+kaha[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"(?:^|[.!]\s*)sahi\s+kaha\s+yaar[.!]*\s*", "", text, flags=re.I).strip()
+    # "bilkul sahi" / "ekdum sahi" as standalone opener validation
+    text = re.sub(r"^(?:bilkul|ekdum|haan\s+bilkul)\s+sahi[.!,]*\s*", "", text, flags=re.I).strip()
+    # Specific banned brochure lines (health/life advice)
+    text = re.sub(r"\b(?:ye|yeh|coffee|chai|kuch\s+bhi)\s+(?:health\s+ke\s+liye|sehat\s+ke\s+liye)\s+(?:accha|achha|bekar|bura)\s+(?:hota|rehta)\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    # Restore capitalization if stripping left lowercase
+    if text and text[0].islower() and len(text) > 1:
+        text = text[0].upper() + text[1:]
 
     # Internal persona configuration must never become part of the user-facing
     # conversation. Remove only a leading meta explanation and keep its useful reply.
@@ -173,8 +217,6 @@ def validate_and_clean_response(
     text = re.sub(r"\bfuture-oriented\s+field\s+hai[.!]*\s*", "", text, flags=re.I)
     text = re.sub(r"\bfuture-oriented\b", "badhiya", text, flags=re.I)
     text = re.sub(r"\b(?:engineering|coding|design)\s+ka\s+scene\s+hai[.!]*\s*", "", text, flags=re.I)
-    text = re.sub(r"\bka\s+scene\s+hai[.!]*\s*", "", text, flags=re.I)
-    text = re.sub(r"\bscene\s+hai[.!]*\s*", "", text, flags=re.I)
     text = re.sub(r"\bkaam\s+karna\s+zaroori\s+hai[.!]*\s*", "kaam toh chalta hi rehta hai", text, flags=re.I)
     text = re.sub(r"\bcoding\s+ka\s+maza\s+toh\s+alag\s+hi\s+hota\s+hai[.!]*\s*", "", text, flags=re.I)
     text = re.sub(r"\balag\s+hi\s+hota\s+hai[.!]*\s*", "", text, flags=re.I)
@@ -188,23 +230,22 @@ def validate_and_clean_response(
         if work_or_tech:
             text = text.replace("😍", "")
 
-    # Code-level Emoji frequency cap: max 1 emoji in 3-4 messages
-    has_recent_assistant_emoji = False
-    if recent_history:
-        for m in recent_history[-3:]:
-            if m.get("role") == "assistant" and re.search(r"[\U00010000-\U0010ffff]", m.get("content", "")):
-                has_recent_assistant_emoji = True
-                break
-    # Strip weird/mismatched emojis (surfing, sunny, cupcake, sparkles)
-    text = re.sub(r"[🏄☀️🧁✨]+", "", text).strip()
-    if has_recent_assistant_emoji:
-        text = re.sub(r"[\U00010000-\U0010ffff]", "", text).strip()
-    else:
-        # Cap to at most 1 emoji in current message
-        emojis = re.findall(r"[\U00010000-\U0010ffff]", text)
-        if len(emojis) > 1:
-            for extra_e in emojis[1:]:
-                text = text.replace(extra_e, "")
+    # Strip weird/mismatched robotic emojis
+    text = re.sub(r"[🏄☀️🧁]+", "", text).strip()
+    # Cap to at most 1 natural emoji per message so it never spams emojis, but allows lively expression on every turn
+    emojis = re.findall(r"[\U00010000-\U0010ffff]", text)
+    if len(emojis) > 1:
+        for extra_e in emojis[1:]:
+            text = text.replace(extra_e, "")
+
+    # Strip unsolicited bio / hobbies dump when user only asked about job/work
+    if user_message and re.search(r"\b(?:kya\s+kart[ei]|kya\s+krt[ei]|kaam\s+kya|profession|job|work)\b", user_message, flags=re.I):
+        text = re.sub(
+            r"[,.]?\s*(?:aur\s+)?(?:mujhe\s+)?(?:sunsets?|aesthetic\s+cafes?|cafes?|indie\s+music|midnight\s+street\s+food)\b[^.!?\n]*",
+            "",
+            text,
+            flags=re.I
+        ).strip()
 
     # Normalize formal romanizations to casual texting Hinglish
     text = re.sub(r"\bmein\b", "me", text, flags=re.I)
@@ -441,7 +482,14 @@ def validate_and_clean_response(
 
     # Final safety fallback
     if not text:
-        text = f"Haha wait, what did you mean? Tell me more 🙂"
+        from app.utils.language_detector import detect_language
+        lang = detect_language(user_message or "")
+        if lang == "hindi":
+            text = "अरे सच में? थोड़ा और बताओ 😊"
+        elif lang == "hinglish":
+            text = "Haha sach me? thoda aur batao 😂"
+        else:
+            text = "Haha wait, really? Tell me more 🙂"
 
     return text
 
@@ -476,10 +524,23 @@ def arrange_and_format_response(
     if len(paragraphs) > 1:
         text = " ".join(paragraphs)
 
-    # 3. Clean redundant spaces and punctuation combos
+    # 3. Clean formal bookish punctuation into breezy mobile texting style
+    # Strip formal dashes and em-dashes (—, –)
+    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    text = re.sub(r"\s+-\s+", " ", text)
+    # Convert formal semicolons to casual commas
+    text = text.replace(";", ",")
+    # Clean redundant spaces & punctuation combos
     text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r",\s*,+", ", ", text)
     text = re.sub(r"\s*([.,!?])", r"\1", text)
+    text = re.sub(r",\s*([?!])", r"\1", text)
     text = re.sub(r"\?{2,}", "?", text)
     text = re.sub(r"!{2,}", "!", text)
+
+    # 4. Strip trailing formal full stop (.) if not an ellipsis (...)
+    # In casual texting, a trailing period feels cold, formal, and robotic
+    if text.endswith(".") and not text.endswith(".."):
+        text = text[:-1].rstrip()
 
     return text

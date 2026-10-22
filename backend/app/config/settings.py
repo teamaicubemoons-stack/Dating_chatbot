@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     llm_request_timeout_seconds: float = 12.0  # Fast failover ceiling per provider (never stalls chat)
     llm_max_retries: int = 0                   # 0 retries allows instant failover to Claude on rate limits
     use_direct_prompt_flow: bool = True        # Direct OpenAI query without restrictive rules; format via Python
+    enable_typing_delay: bool = True           # Realistic human typing delay based on message length
 
     model_config = SettingsConfigDict(
         env_file=".env",

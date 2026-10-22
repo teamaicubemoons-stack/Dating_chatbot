@@ -33,9 +33,12 @@ export function ChatProvider({ children }) {
   // Map of profileId → array of message objects
   const [messagesByProfile, setMessagesByProfile] = useState({});
   const [activeProfileId, setActiveProfileId] = useState(null);
-  const [isTyping, setIsTyping] = useState(false);
+  const [typingProfileId, setTypingProfileId] = useState(null);
   const [error, setError] = useState(null);
   const [lastFailedMessage, setLastFailedMessage] = useState(null);
+
+  // Active profile is typing when typingProfileId matches activeProfileId
+  const isTyping = Boolean(typingProfileId && typingProfileId === activeProfileId);
 
   /**
    * Load conversation history from the backend for a given profile.
@@ -58,11 +61,12 @@ export function ChatProvider({ children }) {
 
   /**
    * Send a message to the backend and append both the user message
-   * and the AI reply to local state. Simulates a realistic typing delay.
+   * and the AI reply to local state.
+   * Natural typing delay is calibrated and served by the backend.
    */
   const sendChatMessage = useCallback(async (profileId, messageText) => {
     const text = messageText.trim();
-    if (!text || isTyping) return;
+    if (!text || typingProfileId === profileId) return;
 
     setError(null);
     setLastFailedMessage(null);
@@ -80,76 +84,25 @@ export function ChatProvider({ children }) {
       [profileId]: [...(prev[profileId] || []), userMsg],
     }));
 
-    // Show typing indicator
-    setIsTyping(true);
+    // Activate typing indicator for this profile
+    setTypingProfileId(profileId);
 
     try {
-      const startTime = Date.now();
       const response = await sendMessage(profileId, userId, text);
-      const apiDuration = Date.now() - startTime;
-
-      // Realistic Human Typing Simulation:
-      // Real humans read/think for 600-1100ms, then type with natural jitter.
-      // Occasionally (1 out of ~15 times) a slightly longer pause (e.g. 5-7s) to simulate real-world multitasking.
-      const isOccasionalLateReply = Math.random() < 0.07;
-      const baseJitter = 400 + Math.random() * 500;
-      const replyLength = (response?.reply || '').length;
-      const readingTime = 700 + Math.random() * 400;
-      const typingTime = replyLength * 28;
-      let targetDuration = Math.min(Math.max(readingTime + typingTime + baseJitter, 1600), 4800);
-      if (isOccasionalLateReply) {
-        targetDuration = 6000 + Math.random() * 2000;
-      }
-
-      const remainingTime = targetDuration - apiDuration;
-      if (remainingTime > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remainingTime));
-      }
-
-      // Split reply into multiple bubbles if multi-line or reaction + follow-up question
       const rawReply = (response?.reply || '').trim();
-      let bubbles = [];
-      if (rawReply.includes('\n')) {
-        bubbles = rawReply.split('\n').map((s) => s.trim()).filter(Boolean);
-      } else {
-        const splitMatch = rawReply.match(/^(.+?[.!,])\s+((?:waise\s+|aur\s+|tu\s+|tum\s+|kya\s+)?.+\?)$/i);
-        if (splitMatch && splitMatch[1].length >= 10 && splitMatch[2].length >= 6) {
-          bubbles = [splitMatch[1].trim(), splitMatch[2].trim()];
-        } else {
-          bubbles = [rawReply];
-        }
-      }
 
-      const firstBubble = bubbles[0] || rawReply;
-      const aiMsg1 = {
-        id: `ai-${Date.now()}-1`,
-        role: 'assistant',
-        content: firstBubble,
-        timestamp: new Date().toISOString(),
-      };
+      if (rawReply) {
+        const aiMsg = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: rawReply,
+          timestamp: new Date().toISOString(),
+        };
 
-      setMessagesByProfile((prev) => ({
-        ...prev,
-        [profileId]: [...(prev[profileId] || []), aiMsg1],
-      }));
-
-      // Deliver subsequent bubble(s) with short realistic pauses
-      if (bubbles.length > 1) {
-        for (let i = 1; i < bubbles.length; i++) {
-          setIsTyping(true);
-          const gap = 800 + Math.random() * 450;
-          await new Promise((resolve) => setTimeout(resolve, gap));
-          const aiMsgNext = {
-            id: `ai-${Date.now()}-${i + 1}`,
-            role: 'assistant',
-            content: bubbles[i],
-            timestamp: new Date().toISOString(),
-          };
-          setMessagesByProfile((prev) => ({
-            ...prev,
-            [profileId]: [...(prev[profileId] || []), aiMsgNext],
-          }));
-        }
+        setMessagesByProfile((prev) => ({
+          ...prev,
+          [profileId]: [...(prev[profileId] || []), aiMsg],
+        }));
       }
 
       setLastFailedMessage(null);
@@ -157,77 +110,36 @@ export function ChatProvider({ children }) {
       setLastFailedMessage({ profileId, messageText: text });
       setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
     } finally {
-      setIsTyping(false);
+      setTypingProfileId((current) => (current === profileId ? null : current));
     }
-  }, [userId, isTyping]);
+  }, [userId, typingProfileId]);
 
   /**
    * Retry sending the last failed message without adding a duplicate user bubble.
    */
   const retryLastMessage = useCallback(async (profileId) => {
-    if (!lastFailedMessage || lastFailedMessage.profileId !== profileId || isTyping) return;
+    if (!lastFailedMessage || lastFailedMessage.profileId !== profileId || typingProfileId === profileId) return;
 
     const text = lastFailedMessage.messageText;
     setError(null);
-    setIsTyping(true);
+    setTypingProfileId(profileId);
 
     try {
-      const startTime = Date.now();
       const response = await sendMessage(profileId, userId, text);
-      const apiDuration = Date.now() - startTime;
-
-      const replyLength = (response?.reply || '').length;
-      const readingTime = 700 + Math.random() * 400;
-      const typingTime = replyLength * 26;
-      const targetDuration = Math.min(Math.max(readingTime + typingTime, 1400), 4500);
-
-      const remainingTime = targetDuration - apiDuration;
-      if (remainingTime > 0) {
-        await new Promise((resolve) => setTimeout(resolve, remainingTime));
-      }
-
       const rawReply = (response?.reply || '').trim();
-      let bubbles = [];
-      if (rawReply.includes('\n')) {
-        bubbles = rawReply.split('\n').map((s) => s.trim()).filter(Boolean);
-      } else {
-        const splitMatch = rawReply.match(/^(.+?[.!,])\s+((?:waise\s+|aur\s+|tu\s+|tum\s+|kya\s+)?.+\?)$/i);
-        if (splitMatch && splitMatch[1].length >= 10 && splitMatch[2].length >= 6) {
-          bubbles = [splitMatch[1].trim(), splitMatch[2].trim()];
-        } else {
-          bubbles = [rawReply];
-        }
-      }
 
-      const firstBubble = bubbles[0] || rawReply;
-      const aiMsg1 = {
-        id: `ai-${Date.now()}-1`,
-        role: 'assistant',
-        content: firstBubble,
-        timestamp: new Date().toISOString(),
-      };
+      if (rawReply) {
+        const aiMsg = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: rawReply,
+          timestamp: new Date().toISOString(),
+        };
 
-      setMessagesByProfile((prev) => ({
-        ...prev,
-        [profileId]: [...(prev[profileId] || []), aiMsg1],
-      }));
-
-      if (bubbles.length > 1) {
-        for (let i = 1; i < bubbles.length; i++) {
-          setIsTyping(true);
-          const gap = 800 + Math.random() * 450;
-          await new Promise((resolve) => setTimeout(resolve, gap));
-          const aiMsgNext = {
-            id: `ai-${Date.now()}-${i + 1}`,
-            role: 'assistant',
-            content: bubbles[i],
-            timestamp: new Date().toISOString(),
-          };
-          setMessagesByProfile((prev) => ({
-            ...prev,
-            [profileId]: [...(prev[profileId] || []), aiMsgNext],
-          }));
-        }
+        setMessagesByProfile((prev) => ({
+          ...prev,
+          [profileId]: [...(prev[profileId] || []), aiMsg],
+        }));
       }
 
       setLastFailedMessage(null);
@@ -235,9 +147,9 @@ export function ChatProvider({ children }) {
     } catch (err) {
       setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
     } finally {
-      setIsTyping(false);
+      setTypingProfileId((current) => (current === profileId ? null : current));
     }
-  }, [userId, isTyping, lastFailedMessage]);
+  }, [userId, typingProfileId, lastFailedMessage]);
 
   const getMessages = useCallback(
     (profileId) => messagesByProfile[profileId] || [],

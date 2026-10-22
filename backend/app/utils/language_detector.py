@@ -29,13 +29,14 @@ HINGLISH_VOCABULARY = {
     "lag", "laga", "lagi", "lage", "lagta", "lagti", "rakh", "rakho", "rakha",
 
     # Common modifiers, particles, greetings & slang
-    "thik", "theek", "accha", "acha", "achha", "badhiya", "sahi", "galat", "mast",
-    "bohot", "bahut", "kuch", "koi", "sab", "sabhi", "aur", "ya", "par", "lekin", "magar",
-    "wese", "waise", "aise", "jaise", "bas", "sirf", "abhi", "aaj", "kal", "parso",
-    "subah", "shaam", "raat", "din", "yaar", "bhai", "bro", "dost", "pata", "pta",
-    "nahin", "nahi", "nhi", "na", "mat", "kyuki", "kyonki", "shyd", "shayad",
+    "thik", "theek", "thk", "accha", "acha", "achha", "badhiya", "sahi", "shi", "galat", "mast",
+    "bohot", "bahut", "kuch", "kch", "koi", "sab", "sabhi", "aur", "ya", "par", "lekin", "magar",
+    "wese", "waise", "aise", "jaise", "bas", "bs", "sirf", "abhi", "aaj", "kal", "parso",
+    "subah", "shaam", "raat", "din", "yaar", "yrr", "yar", "bhai", "bro", "dost", "pata", "pta",
+    "nahin", "nahi", "nhi", "ni", "na", "naa", "mat", "kyuki", "kyonki", "shyd", "shayad",
+    "ha", "haa", "haan", "han", "hn", "ji",
     "zarur", "zaroor", "bhi", "to", "toh", "hi", "bina", "saath", "pehle", "baad",
-    "namaste", "namaskar", "shukriya", "alvida", "chalo"
+    "namaste", "namaskar", "shukriya", "alvida", "chalo", "chl"
 }
 
 
