@@ -276,3 +276,24 @@ def test_short_clarification_preserves_topic_and_continuity():
     assert "SHORT MESSAGE DIRECTIVE" in prompt
     assert "immediately preceding assistant message" in prompt
     assert "companion facts separate from user facts" in prompt
+
+
+def test_incomplete_and_dangling_line_healing():
+    from app.chat.response_validator import arrange_and_format_response
+
+    # Case 1: Dangling stub before a standalone question is dropped
+    raw1 = "free time me to main usually\nTumhare free time ka kya scene hota hai"
+    res1 = arrange_and_format_response(raw1, "Riya", user_message="aur kya psnd h tumko.. free time m kya krti ho")
+    assert "free time me to main usually" not in res1
+    assert "Tumhare free time ka kya scene hota hai" in res1
+
+    # Case 2: Mid-sentence broken line is stitched together
+    raw2 = "main toh\nKabhi kabhi!"
+    res2 = arrange_and_format_response(raw2, "Riya", user_message="tum kya krti ho")
+    assert "main toh kabhi kabhi!" in res2
+
+    # Case 3: Complete hobby/free time description is not stripped
+    raw3 = "free time me to main usually aesthetic cafes explore karti hu aur chill karti hu\nTumhara kya scene hai?"
+    res3 = arrange_and_format_response(raw3, "Riya", user_message="aur kya psnd h tumko.. free time m kya krti ho")
+    assert "aesthetic cafes explore karti hu" in res3
+    assert "chill karti hu" in res3

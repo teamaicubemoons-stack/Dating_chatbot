@@ -238,14 +238,6 @@ def validate_and_clean_response(
         for extra_e in emojis[1:]:
             text = text.replace(extra_e, "")
 
-    # Strip unsolicited bio / hobbies dump when user only asked about job/work
-    if user_message and re.search(r"\b(?:kya\s+kart[ei]|kya\s+krt[ei]|kaam\s+kya|profession|job|work)\b", user_message, flags=re.I):
-        text = re.sub(
-            r"[,.]?\s*(?:aur\s+)?(?:mujhe\s+)?(?:sunsets?|aesthetic\s+cafes?|cafes?|indie\s+music|midnight\s+street\s+food)\b[^.!?\n]*",
-            "",
-            text,
-            flags=re.I
-        ).strip()
 
     # Normalize formal romanizations to casual texting Hinglish
     text = re.sub(r"\bmein\b", "me", text, flags=re.I)
@@ -494,6 +486,69 @@ def validate_and_clean_response(
     return text
 
 
+DANGLING_END_WORDS = {
+    "usually", "mostly", "basically", "especially", "actually", "probably",
+    "aur", "and", "ki", "ke", "ka", "ko", "ya", "but", "lekin", "agar",
+    "kyunki", "because", "so", "jaise", "like"
+}
+
+
+def is_dangling_line(line: str) -> bool:
+    """Check if a line ends on an incomplete connective or is an orphaned stub."""
+    clean = re.sub(r"[\U00010000-\U0010ffff.,!?\-—–]+", "", line).strip().lower()
+    words = clean.split()
+    if not words:
+        return True
+    if words[-1] in DANGLING_END_WORDS:
+        return True
+    # Orphaned pronoun/particle stub without verb (e.g. 'main toh', 'mera toh', 'waise main')
+    if len(words) <= 2 and words[0] in {"main", "mera", "meri", "mere", "hum", "waise", "wese"}:
+        if words[-1] in {"toh", "to", "bhi", "hi", "main", "mera"}:
+            return True
+    return False
+
+
+def clean_and_assemble_lines(raw_lines: List[str]) -> List[str]:
+    """
+    Assembles lines by stitching mid-sentence breaks together and dropping
+    orphaned dangling fragments that cannot be completed.
+    """
+    valid_lines: List[str] = []
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i].strip()
+        if not line:
+            i += 1
+            continue
+
+        if is_dangling_line(line):
+            if i + 1 < len(raw_lines):
+                next_line = raw_lines[i + 1].strip()
+                next_lower = next_line.lower()
+                next_words = next_lower.split()
+                first_word = next_words[0] if next_words else ""
+
+                # If next line is a subject switch or standalone question, don't merge
+                is_separate_thought = (
+                    first_word in {"tum", "tumhara", "tumhare", "tumhari", "tumhe", "aap", "aapka", "kya", "waise", "wese", "kyun", "kahan", "kaise"}
+                    or next_line.endswith("?")
+                )
+                if not is_separate_thought:
+                    merged_line = f"{line} {next_line[0].lower() + next_line[1:] if len(next_line) > 1 else next_line}"
+                    if not is_dangling_line(merged_line):
+                        valid_lines.append(merged_line)
+                    i += 2
+                    continue
+            # Drop incomplete dangling fragment
+            i += 1
+            continue
+
+        valid_lines.append(line)
+        i += 1
+
+    return valid_lines
+
+
 def arrange_and_format_response(
     raw_response: str,
     persona_name: str,
@@ -507,7 +562,7 @@ def arrange_and_format_response(
       1. User-specific context (preferred pronoun 'tum'/'aap', grammatical gender agreement).
       2. Persona character & natural mobile texting format (brevity, casing, emoji moderation).
       3. Clean-up of AI leaks, code fences, corporate assistant disclaimers, or metadata tags.
-      4. Arranging multi-line / verbose responses into clean conversational chat format.
+      4. Arranging multi-line / verbose responses into clean conversational chat format without dangling/incomplete sentences.
     """
     # 1. Base validation and cleaning with user context
     text = validate_and_clean_response(
@@ -519,28 +574,47 @@ def arrange_and_format_response(
         user_message=user_message,
     )
 
-    # 2. Arrange multi-paragraph or multi-line responses into clean chat bubbles
-    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-    if len(paragraphs) > 1:
-        text = " ".join(paragraphs)
-
-    # 3. Clean formal bookish punctuation into breezy mobile texting style
-    # Strip formal dashes and em-dashes (—, –)
-    text = re.sub(r"\s*[—–]\s*", ", ", text)
+    # 2. Convert formal dashes and em-dashes (—, –) to newline or space
+    text = re.sub(r"\s*[—–]\s*", "\n", text)
     text = re.sub(r"\s+-\s+", " ", text)
-    # Convert formal semicolons to casual commas
-    text = text.replace(";", ",")
+    # Convert formal semicolons to spaces
+    text = text.replace(";", "")
+
+    # 3. Clean formal bookish commas after conversational openers and before transition words
+    text = re.sub(r"\b(haha|hehe|lol|achha|acha|arey|arre|waise|wese|yaar|yrr|suno|oye|haan|ha|hn|theek|thik|toh|to)\s*,\s*", r"\1 ", text, flags=re.I)
+    text = re.sub(r",\s*(kya|toh|to|aur|par|lekin|waise|wese|yrr|yaar)\b", r" \1", text, flags=re.I)
+
     # Clean redundant spaces & punctuation combos
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[ \t]+", " ", text).strip()
     text = re.sub(r",\s*,+", ", ", text)
     text = re.sub(r"\s*([.,!?])", r"\1", text)
     text = re.sub(r",\s*([?!])", r"\1", text)
     text = re.sub(r"\?{2,}", "?", text)
     text = re.sub(r"!{2,}", "!", text)
 
-    # 4. Strip trailing formal full stop (.) if not an ellipsis (...)
-    # In casual texting, a trailing period feels cold, formal, and robotic
-    if text.endswith(".") and not text.endswith(".."):
-        text = text[:-1].rstrip()
+    # 4. If single line without newline, split two thoughts naturally on sentence boundary
+    if "\n" not in text:
+        text = re.sub(
+            r"(?<=[.?!😂😜👀😏🥺])\s+(?=(?:waise|wese|tum|aur|batao|kya|[A-Z]))",
+            "\n",
+            text,
+            count=1,
+            flags=re.I,
+        )
 
-    return text
+    # 5. Strip trailing formal full stop (.) and commas at end of lines
+    raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in text.split("\n") if l.strip()]
+
+    # 6. Clean dangling fragments & stitch mid-sentence breaks into complete sentences
+    valid_lines = clean_and_assemble_lines(raw_lines)
+    if not valid_lines:
+        from app.utils.language_detector import detect_language
+        lang = detect_language(user_message or "")
+        if lang == "hindi":
+            return "अरे सच में? थोड़ा और बताओ 😊"
+        elif lang == "hinglish":
+            return "Haha sach me? thoda aur batao 😂"
+        else:
+            return "Haha wait, really? Tell me more 🙂"
+
+    return "\n".join(valid_lines[:2])
