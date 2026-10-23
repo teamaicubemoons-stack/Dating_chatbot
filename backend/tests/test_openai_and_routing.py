@@ -48,7 +48,7 @@ def test_openai_client_health_check_mock():
         client = OpenAIClient()
         assert client.health_check() is True
 
-        mock_client_instance.chat.completions.create.side_effect = Exception("Auth error")
+        mock_client_instance.models.list.side_effect = Exception("Auth error")
         assert client.health_check() is False
 
 

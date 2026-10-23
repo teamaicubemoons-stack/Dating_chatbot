@@ -164,3 +164,55 @@ def test_clear_chat_conversation_endpoint():
     assert profile_still_exists.name == "Diya"
     db.close()
 
+
+def test_nudge_user_endpoint(monkeypatch):
+    from app.models.db_models import Message, Profile
+
+    user_id = "test_user_nudge_1"
+    profile_id = "profile_1"
+
+    # 1. No messages yet -> nudged is False
+    res_empty = client.post(f"/chat/{profile_id}/nudge", json={"user_id": user_id, "min_idle_seconds": 0})
+    assert res_empty.status_code == 200
+    assert res_empty.json()["nudged"] is False
+    assert res_empty.json()["reason"] == "no_messages"
+
+    # 2. User ended conversation with 'bye' -> nudged is False
+    db = TestingSessionLocal()
+    m_bye = Message(user_id=user_id, profile_id=profile_id, role="user", content="chalo bye baad me baat karenge")
+    db.add(m_bye)
+    db.commit()
+    db.close()
+
+    res_bye = client.post(f"/chat/{profile_id}/nudge", json={"user_id": user_id, "min_idle_seconds": 0})
+    assert res_bye.status_code == 200
+    assert res_bye.json()["nudged"] is False
+    assert res_bye.json()["reason"] == "user_ended_conversation"
+
+    # 3. User left mid-chat without saying bye
+    user_id_active = "test_user_nudge_active"
+    db = TestingSessionLocal()
+    m_active = Message(user_id=user_id_active, profile_id=profile_id, role="user", content="horror movie ka scene hai")
+    db.add(m_active)
+    db.commit()
+    db.close()
+
+    # Mock route_and_generate to return a casual nudge
+    monkeypatch.setattr(
+        "app.chat.chat_engine.route_and_generate",
+        lambda **kwargs: "kahan gayab ho gaye achanak se? haha 😂",
+    )
+
+    res_nudge = client.post(f"/chat/{profile_id}/nudge", json={"user_id": user_id_active, "min_idle_seconds": 0})
+    assert res_nudge.status_code == 200
+    data_nudge = res_nudge.json()
+    assert data_nudge["nudged"] is True
+    assert "kahan gayab" in data_nudge["reply"].lower()
+
+    # 4. Immediate second nudge attempt -> blocked as already_nudged!
+    res_dup = client.post(f"/chat/{profile_id}/nudge", json={"user_id": user_id_active, "min_idle_seconds": 0})
+    assert res_dup.status_code == 200
+    assert res_dup.json()["nudged"] is False
+    assert res_dup.json()["reason"] == "already_nudged"
+
+

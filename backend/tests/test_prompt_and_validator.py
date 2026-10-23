@@ -297,3 +297,245 @@ def test_incomplete_and_dangling_line_healing():
     res3 = arrange_and_format_response(raw3, "Riya", user_message="aur kya psnd h tumko.. free time m kya krti ho")
     assert "aesthetic cafes explore karti hu" in res3
     assert "chill karti hu" in res3
+
+
+def test_anti_agree_bot_and_cheerleading_stripping():
+    from app.chat.response_validator import validate_and_clean_response
+
+    # Test stripping canned agreement openers
+    raw1 = "Haan sahi baat hai, par mujhe aisa lagta hai."
+    clean1 = validate_and_clean_response(raw1, "Riya")
+    assert "sahi baat hai" not in clean1.lower()
+
+    raw2 = "Haan ye karna sahi hai, waise tumhara kya plan hai?"
+    clean2 = validate_and_clean_response(raw2, "Riya")
+    assert "sahi hai" not in clean2.lower()
+
+    # Test stripping corporate cheerleader lines
+    raw3 = "Lekin woh toh har jagah hota hai! Workload toh chalta rehta hai."
+    clean3 = validate_and_clean_response(raw3, "Riya")
+    assert "woh toh har jagah hota hai" not in clean3.lower()
+
+    raw4 = "Har din kuch naya seekhne ko milta hai! Mujhe pasand hai."
+    clean4 = validate_and_clean_response(raw4, "Riya")
+    assert "har din kuch naya seekhne ko milta hai" not in clean4.lower()
+
+
+def test_deadend_rescue_and_movie_initiative():
+    from app.chat.prompt_builder import (
+        is_no_topic_or_deadend_message,
+        is_meetup_invitation_message,
+        build_direct_prompt,
+    )
+    from app.chat.response_validator import validate_and_clean_response
+
+    # 1. Detection of dead-end / lull messages
+    assert is_no_topic_or_deadend_message("ni koi intresting topic nhi") is True
+    assert is_no_topic_or_deadend_message("kuch bhi nahi bore ho raha") is True
+    assert is_no_topic_or_deadend_message("tum batao kya kare") is True
+    assert is_no_topic_or_deadend_message("kya kar rahe ho?") is False
+
+    # 2. Detection of movie / hangout / genre invitations
+    assert is_meetup_invitation_message("koi movie chalen") is True
+    assert is_meetup_invitation_message("horror") is True
+    assert is_meetup_invitation_message("comedy film") is True
+
+    # 3. Sanitizer removes therapist silence cliches
+    raw_silence = "Koi baat nahi! Kabhi kabhi silence bhi accha hota hai"
+    clean_silence = validate_and_clean_response(raw_silence, "Riya")
+    assert "silence bhi accha hota hai" not in clean_silence.lower()
+
+    raw_topic = "Acha koi aur interesting topic hai ya phir aise hi chill karte hain?"
+    clean_topic = validate_and_clean_response(raw_topic, "Riya")
+    assert "koi aur interesting topic hai" not in clean_topic.lower()
+
+    # 4. Direct prompt injection for dead-end rescue
+    persona = {
+        "name": "Riya Kapoor",
+        "short_bio": "UI/UX designer in Delhi.",
+        "tone": "casual, playful, Gen-Z",
+        "city": "Delhi",
+    }
+    prompt_deadend, _ = build_direct_prompt(
+        persona,
+        [{"role": "user", "content": "ni koi intresting topic nhi"}],
+        "ni koi intresting topic nhi",
+    )
+    assert "CONVERSATION INITIATIVE & DEAD-END RESCUE" in prompt_deadend
+    assert "kabhi kabhi silence bhi accha hota hai" in prompt_deadend
+
+    # 5. Direct prompt injection for movie invitation
+    prompt_movie, _ = build_direct_prompt(
+        persona,
+        [{"role": "user", "content": "horror"}],
+        "horror",
+    )
+    assert "MOVIE & DATE/HANGOUT INVITATION BANTER" in prompt_movie
+    assert "Never give a flat, dry 1-2 word dead end" in prompt_movie
+
+
+def test_anti_interviewer_and_moral_stripping():
+    from app.chat.response_validator import validate_and_clean_response, arrange_and_format_response, clean_and_assemble_lines
+
+    # 1. Acronym case preservation in line assembly (AWM / BGMI / AI must NOT become aWM / bGMI)
+    merged = clean_and_assemble_lines(["mera favourite weapon toh", "AWM hai hamesha se"])
+    assert "AWM" in merged[0]
+    assert "aWM" not in merged[0]
+
+    # 2. Strip essay-style moral conclusions
+    raw_moral = "Direct headshot se knock! Aise moments hi toh game ko mazedaar banate hain!"
+    clean_moral = validate_and_clean_response(raw_moral, "Riya")
+    assert "mazedaar banate hain" not in clean_moral.lower()
+
+    # 3. Strip exaggerated cartoon flattery
+    raw_mvp = "Tumhe toh MVP award milna chahiye akele sab sambhal liya"
+    clean_mvp = validate_and_clean_response(raw_mvp, "Riya")
+    assert "mvp award" not in clean_mvp.lower()
+
+    # 4. Strip generic canned phrase ("BGMI ka mazaa hi alag hai")
+    raw_maza = "Oho, BGMI ka mazaa hi alag hai! Tum kitne kills kiye?"
+    clean_maza = validate_and_clean_response(raw_maza, "Riya")
+    assert "mazaa hi alag hai" not in clean_maza.lower()
+
+    # 5. Moderate excessive exclamation marks (! count capped at 1)
+    raw_screaming = "wah wah! Direct headshot se knock! Badi baatein kar rahe ho! Teamwork tha!"
+    arranged = arrange_and_format_response(raw_screaming, "Riya")
+    assert arranged.count("!") <= 1
+
+
+def test_companion_gender_meal_coherence_and_survey_fixes():
+    from app.chat.response_validator import validate_and_clean_response
+
+    # 1. Female persona self-reference agreement (samajh gaya -> samajh gayi, soch raha tha -> soch rahi thi)
+    raw_gender = "Ohh samajh gaya 😂, main bhi yahi soch raha tha."
+    clean_gender = validate_and_clean_response(raw_gender, persona_name="Diya")
+    assert "samajh gaya" not in clean_gender.lower()
+    assert "samajh gayi" in clean_gender.lower()
+    assert "soch raha tha" not in clean_gender.lower()
+    assert "soch rahi thi" in clean_gender.lower()
+
+    # 2. Meal correction interceptor when user notes lunch was finished hours ago
+    raw_lunch_ack = "ohh samajh gaya 😂 ab kya plan hai?"
+    user_lunch_msg = "mera to lunch bohot pehle ka ho chuka hai"
+    clean_lunch_ack = validate_and_clean_response(raw_lunch_ack, persona_name="Diya", user_message=user_lunch_msg)
+    assert "time dekhna bhool gayi thi" in clean_lunch_ack.lower()
+
+    # 3. Survey question stripping ('thoda detail me bata do')
+    raw_survey = "Tumhara normal day kaisa hota hai, thoda detail me bata do! 😜"
+    clean_survey = validate_and_clean_response(raw_survey, persona_name="Diya")
+    assert "detail me bata" not in clean_survey.lower()
+
+    # 4. Stock filler stripping ('thoda chill karne ka waqt mil raha hai?')
+    raw_filler = "Acha toh ab kya plan hai, thoda chill karne ka waqt mil raha hai?"
+    clean_filler = validate_and_clean_response(raw_filler, persona_name="Diya")
+    assert "chill karne ka waqt mil raha hai" not in clean_filler.lower()
+
+
+def test_new_chat_test_flaws_fixes():
+    from app.chat.response_validator import validate_and_clean_response
+
+    # 1. Acronym case preservation at start of message (BGMI must NOT become bGMI)
+    raw_acronym = "BGMI! Wo toh kaafi interesting game hai."
+    clean_acronym = validate_and_clean_response(raw_acronym, persona_name="Diya", user_message="mai bgmi khelta hu")
+    assert clean_acronym.startswith("BGMI")
+    assert not clean_acronym.startswith("bGMI")
+
+    # 2. Compound verb protection: 'enjoy kar leti hu' must NOT become 'enjoy karo leti hu'
+    raw_verb = "Par kabhi kabhi friends ke saath thoda enjoy kar leti hu."
+    clean_verb = validate_and_clean_response(raw_verb, persona_name="Diya", preferred_pronoun="tum")
+    assert "karo leti" not in clean_verb.lower()
+    assert "kar leti" in clean_verb.lower()
+
+    # 3. Maza masculine gender agreement ('badi mazaa' -> 'bada maza')
+    raw_maza = "Movie dekhne mein badi mazaa aata hai."
+    clean_maza = validate_and_clean_response(raw_maza, persona_name="Diya")
+    assert "badi maza" not in clean_maza.lower()
+    assert "bada maza" in clean_maza.lower()
+
+    # 4. Cliche stripping ('X ka maza hi alag hota hai', 'vibe hi alag hai')
+    raw_cliche1 = "solo khelne ka toh alag hi maza hota hai! Apni strategy rehti hai."
+    clean_cliche1 = validate_and_clean_response(raw_cliche1, persona_name="Diya")
+    assert "alag hi maza" not in clean_cliche1.lower()
+
+    raw_cliche2 = "Pahadon ki vibe hi alag hai! Bahut sukoon milta hai."
+    clean_cliche2 = validate_and_clean_response(raw_cliche2, persona_name="Diya")
+    assert "vibe hi alag" not in clean_cliche2.lower()
+
+    # 5. Sycophantic yes-man opener stripping ('sahi keh rahe ho', 'dono hi sahi hai')
+    raw_agree1 = "Sahi keh rahe ho 😂 kisi aur se baat karna chahiye."
+    clean_agree1 = validate_and_clean_response(raw_agree1, persona_name="Diya")
+    assert "sahi keh rahe ho" not in clean_agree1.lower()
+
+    raw_agree2 = "Ghumna aur game khelna dono hi sahi hai! Adventure bhi milta hai."
+    clean_agree2 = validate_and_clean_response(raw_agree2, persona_name="Diya")
+    assert "dono hi sahi hai" not in clean_agree2.lower()
+
+    # 6. Preachy singlehood and work-balance advice stripping
+    raw_preach1 = "Kabhi kabhi single rehna bhi achha hota hai, thoda freedom milta hai!"
+    clean_preach1 = validate_and_clean_response(raw_preach1, persona_name="Diya")
+    assert "single rehna bhi" not in clean_preach1.lower()
+    assert "freedom milta hai" not in clean_preach1.lower()
+
+    raw_preach2 = "Kaam ke saath thoda balance bhi zaroori hai na."
+    clean_preach2 = validate_and_clean_response(raw_preach2, persona_name="Diya")
+    assert "balance bhi zaroori hai" not in clean_preach2.lower()
+
+
+def test_universal_philosophy_stripping_and_fallback():
+    from app.chat.response_validator import validate_and_clean_response
+    from app.chat.prompt_builder import is_user_alone_at_office_message
+
+    # 1. Universal "kabhi kabhi toh X ka maza bhi aata hai" stripping
+    raw_phil1 = "ohh akela office ka vibe toh thoda different hota hai! 😜 Kabhi kabhi toh akele hone ka maza bhi aata hai"
+    clean_phil1 = validate_and_clean_response(raw_phil1, persona_name="Diya")
+    assert "kabhi kabhi" not in clean_phil1.lower()
+    assert "maza bhi aata hai" not in clean_phil1.lower()
+
+    # 2. Philosophical platitudes: "kabhi kabhi akele baithna bhi achha hota hai"
+    raw_phil2 = "Kabhi kabhi akele baithna bhi achha hota hai, sukoon milta hai!"
+    clean_phil2 = validate_and_clean_response(raw_phil2, persona_name="Diya")
+    assert "kabhi kabhi" not in clean_phil2.lower()
+
+    # 3. Fallback must never demand 'thoda aur batao'
+    clean_empty = validate_and_clean_response("Kabhi kabhi toh akele hone ka maza bhi aata hai", persona_name="Diya", user_message="Ha ye to hai")
+    assert "thoda aur batao" not in clean_empty.lower()
+    assert "sahi hai" in clean_empty.lower()
+
+    # 4. Alone at office detection
+    assert is_user_alone_at_office_message("abhi to office me mai akele bs hu koi abhi tk aaya hi ni hai kaam to utna ni hai normal sa hai") is True
+    assert is_user_alone_at_office_message("koi abhi tak nahi aaya") is True
+    assert is_user_alone_at_office_message("kya kar rahe ho?") is False
+
+
+def test_anti_sycophancy_and_anti_dead_end_guard():
+    # 1. 'haha sahi hai' stripping
+    raw_sahi = "haha sahi hai! Weekend ki planning kya hai? Ghar pe chill ya kuch aur plan hai? 😅"
+    clean_sahi = validate_and_clean_response(raw_sahi, "Riya")
+    assert not clean_sahi.lower().startswith("haha sahi hai")
+    assert "weekend ki planning" in clean_sahi.lower()
+
+    # 2. 'oooh, ghumne ka vibe accha hai!' stripping
+    raw_vibe = "oooh, ghumne ka vibe accha hai! Kahan jaane ka mann hai?"
+    clean_vibe = validate_and_clean_response(raw_vibe, "Riya")
+    assert "vibe accha" not in clean_vibe.lower()
+    assert "kahan jaane ka" in clean_vibe.lower()
+
+    # 3. Substantive user message must NOT have follow-up question pruned into a dead-end
+    recent = [{"role": "assistant", "content": "Weekend ki planning kya hai? Ghar pe chill ya kuch aur plan hai? 😅"}]
+    user_msg = "bahar ghumne ka mn kr rha hai yrr"
+    raw_reply = "Ghumne ka? Sahi thought hai! Kahan jaane ka plan banaya hai?"
+    cleaned_flow = validate_and_clean_response(raw_reply, "Riya", recent_history=recent, user_message=user_msg)
+    assert "?" in cleaned_flow
+    assert "kahan jaane ka plan" in cleaned_flow.lower()
+
+    # 4. Leaked canned tease 'bas haan haan hi chal raha hai aaj?' stripping
+    raw_tease = "bas haan haan hi chal raha hai aaj? 😂"
+    clean_tease = validate_and_clean_response(raw_tease, "Riya")
+    assert "bas haan haan" not in clean_tease.lower()
+
+
+
+
+
+
+

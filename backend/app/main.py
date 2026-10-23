@@ -29,7 +29,7 @@ from app.api import routes_chat, routes_profiles, routes_health, routes_memories
 from app.models.db_models import LLMStatus, Profile
 from app.personas.persona_loader import load_all_personas
 from app.rag.vector_store import seed_persona_knowledge
-from app.scheduler.groq_health_check import start_scheduler, stop_scheduler
+from app.scheduler.openai_health_check import start_scheduler, stop_scheduler
 
 # Configure logging before any other imports that might log
 setup_logging()
@@ -51,10 +51,15 @@ async def lifespan(app: FastAPI):
     db = SessionLocal()
     try:
         # 2. Ensure LLMStatus row exists (id=1 is the singleton row)
-        if db.get(LLMStatus, 1) is None:
-            db.add(LLMStatus(id=1, current_provider="groq", groq_available=True))
+        existing_status = db.get(LLMStatus, 1)
+        if existing_status is None:
+            db.add(LLMStatus(id=1, current_provider="openai", groq_available=False))
             db.commit()
-            logger.info("LLMStatus row created — default provider: groq")
+            logger.info("LLMStatus row created — provider: openai (gpt-5.6-luna)")
+        elif existing_status.current_provider != "openai":
+            existing_status.current_provider = "openai"
+            db.commit()
+            logger.info("LLMStatus updated → openai")
 
         # 3. Sync persona JSON configs → DB Profile rows
         personas = load_all_personas()

@@ -69,3 +69,33 @@ def calculate_typing_delay(text: str) -> float:
     delay += random.uniform(-0.15, 0.25)
     final_delay = max(0.5, min(delay, 6.0))
     return round(final_delay, 2)
+
+
+def calculate_read_delay(text: str) -> float:
+    """
+    Calculate realistic human reading time in seconds before typing indicator starts.
+    Simulates the companion seeing, reading, and absorbing the user's message.
+
+    Pacing:
+      1–4 words   -> 0.8–1.3 sec
+      5–12 words  -> 1.2–1.8 sec
+      13+ words   -> 1.6–2.4 sec
+    """
+    if not text or not text.strip():
+        return 0.6
+
+    words = re.findall(r"\S+", text.strip())
+    wc = len(words)
+    if wc == 0:
+        return 0.6
+
+    if wc <= 4:
+        delay = random.uniform(0.8, 1.3)
+    elif wc <= 12:
+        delay = random.uniform(1.2, 1.8)
+    else:
+        pace = 1.4 + wc * 0.04
+        delay = min(2.4, pace + random.uniform(0.0, 0.3))
+
+    return round(delay, 2)
+

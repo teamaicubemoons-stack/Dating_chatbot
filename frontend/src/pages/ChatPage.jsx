@@ -20,13 +20,44 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const outletContext = useOutletContext() || {};
   const { onToggleMobileNav } = outletContext;
-  const { loadHistory, setActiveProfileId, clearConversation, isTyping } = useChatContext();
+  const {
+    loadHistory,
+    setActiveProfileId,
+    clearConversation,
+    isTyping,
+    getMessages,
+    checkAndTriggerNudge,
+  } = useChatContext();
 
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showClearChatModal, setShowClearChatModal] = useState(false);
   const [topbarImgError, setTopbarImgError] = useState(false);
+
+  // Inactivity Re-engagement Nudge: If user goes idle for 3-4 minutes (200s+)
+  // without ending the conversation, companion will proactively check in once!
+  useEffect(() => {
+    if (!profileId) return;
+
+    const interval = setInterval(() => {
+      const msgs = getMessages(profileId);
+      if (!msgs || msgs.length === 0) return;
+
+      const lastMsg = msgs[msgs.length - 1];
+      if (!lastMsg || !lastMsg.timestamp) return;
+
+      const lastTime = new Date(lastMsg.timestamp).getTime();
+      const elapsedSec = (Date.now() - lastTime) / 1000;
+
+      // 3.5 minutes (210s) threshold
+      if (elapsedSec >= 200 && elapsedSec <= 900) {
+        checkAndTriggerNudge(profileId);
+      }
+    }, 12000);
+
+    return () => clearInterval(interval);
+  }, [profileId, getMessages, checkAndTriggerNudge]);
 
   // Dynamic Activity Status based on typing and daily schedule
   const currentHour = new Date().getHours();

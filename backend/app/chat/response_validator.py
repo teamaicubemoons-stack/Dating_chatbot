@@ -28,6 +28,12 @@ _ROBOTIC_AI_PATTERNS = [
     re.compile(r"how can i help you today\??", re.I),
 ]
 
+# Patterns for leaked role tags or instruction wrappers
+_LEAKED_PREFIX_PATTERNS = [
+    re.compile(r"^(?:assistant|diya|luna|ethan|zara|bot|system):\s*", re.I),
+    re.compile(r"^\[(?:response|reply|assistant|message)\]:\s*", re.I),
+]
+
 # Patterns where LLM accidentally claims or confesses to being an AI
 _AI_CONFESSION_PATTERNS = [
     re.compile(r"\b(?:haan,?\s*)?(?:main|mai)\s+(?:ek\s+)?ai(?:\s+(?:hu|hoon|bot|companion))?\b", re.I),
@@ -36,13 +42,108 @@ _AI_CONFESSION_PATTERNS = [
     re.compile(r"\bhaan\s+(?:main|mai)\s+(?:ek\s+)?bot\b", re.I),
 ]
 
-# Patterns for system prompt / internal instruction leaks
-_LEAKED_PREFIX_PATTERNS = [
-    re.compile(r"^assistant:\s*", re.I),
-    re.compile(r"^response:\s*", re.I),
-    re.compile(r"^reply:\s*", re.I),
-    re.compile(r"^\[.*?\]\s*", re.I),  # strips [Instruction: ...] or [Urgent: ...]
+# Banned try-hard metaphor punchlines (ban metaphor-style punchlines such as "trailer mode", "negotiation", "budget", "vibe hijack", "araam mode", "scene on hai")
+_BANNED_METAPHOR_PATTERNS = [
+    re.compile(r"\btrailer\s+mode\b", re.I),
+    re.compile(r"\bpicture\s+baaki\s+hai\b", re.I),
+    re.compile(r"\bneend\s+se\s+negotiation\b", re.I),
+    re.compile(r"\bnegotiation\b", re.I),
+    re.compile(r"\b(?:reply|shabdo?n?)\s+ka\s+budget\b", re.I),
+    re.compile(r"\bbudget\s+thoda\s+limited\b", re.I),
+    re.compile(r"\bbudget\s+limited\b", re.I),
+    re.compile(r"\bvibe\s+hijack\b", re.I),
+    re.compile(r"\b(?:araam|aram)\s+mode\b", re.I),
+    re.compile(r"\bscene\s+on\s+hai\b", re.I),
+    re.compile(r"\bscene\s+on\b", re.I),
+    re.compile(r"\bbattery\s+low\b", re.I),
+    re.compile(r"\benergy\s+mode\b", re.I),
+    re.compile(r"\bsurvival\s+mode\b", re.I),
+    re.compile(r"\brecharge\s+mode\b", re.I),
+    re.compile(r"\bkeyboard\s+se\s+dosti\b", re.I),
+    re.compile(r"\bkeyboard\s+safe\s+hai\b", re.I),
 ]
+
+_METAPHOR_REPLACEMENTS = [
+    (re.compile(r"\b(?:neend\s+se\s+)?negotiation\s+chal\s+rahi\s+hai\b", re.I), "neend nahi khuli abhi tak"),
+    (re.compile(r"\btrailer\s+mode\s+me\s+hai,\s*picture\s+baaki\s+hai\b", re.I), "to abhi shuruat hai"),
+    (re.compile(r"\btrailer\s+mode\b", re.I), "shuruat"),
+    (re.compile(r"\bvibe\s+hijack\s+kar\s+liya\b", re.I), "mood kharab kar diya"),
+    (re.compile(r"\b(?:araam|aram)\s+mode\s+banta\s+hai\b", re.I), "aaram karo bas"),
+    (re.compile(r"\b(?:araam|aram)\s+mode\b", re.I), "aaram"),
+    (re.compile(r"\bbas\s+reply\s+ka\s+budget\s+thoda\s+limited\s+chal\s+raha\s+hai\s+aaj\b", re.I), "thoda kam bol rahe ho aaj"),
+    (re.compile(r"\bkeyboard\s+se\s+dosti\s+tod\s+li\s+kya\b", re.I), "kya hua"),
+    (re.compile(r"\bkeyboard\s+safe\s+hai\s+phir\b", re.I), "chalo badhiya"),
+]
+
+_DISTRESS_KEYWORDS = re.compile(
+    r"\b("
+    r"jukam|zukaam|sardi|bukhar|fever|headache|sir\s+dard|tabiyat|tabiat|bimar|beemar|"
+    r"sick|ill|cough|khansi|throat|gale\s+me|body\s+pain|chot|accident|dawai|medicine|doctor|hospital|"
+    r"mood\s+(?:off|kharab|down|sad)|udas|udaas|rona|crying|depressed|depression|akela|"
+    r"sad\s+hu|upset\s+hu|dil\s+tut|heartbroken|thak\s+(?:gaya|gayi)|exhausted|burnout|"
+    r"too\s+tired|so\s+tired|sir\s+phat\s+raha|tension|stress|anxiety|jhagda|ladai|fight|"
+    r"bahas|breakup|dadi|nani|passed\s+away|rip|loss"
+    r")\b",
+    re.I
+)
+
+_EMOJI_REGEX = re.compile(r"[\U00010000-\U0010ffff]")
+_LAUGHING_OR_FLIRTY_EMOJIS = re.compile(r"[😂😅😄😆🤣😜😏😉🔥👀💃✨]")
+
+
+def is_user_in_distress(text: Optional[str]) -> bool:
+    if not text:
+        return False
+    return bool(_DISTRESS_KEYWORDS.search(text))
+
+
+def count_banned_metaphors(text: str) -> int:
+    return sum(1 for pat in _BANNED_METAPHOR_PATTERNS if pat.search(text))
+
+
+def clean_banned_metaphors(text: str) -> str:
+    for pat, repl in _METAPHOR_REPLACEMENTS:
+        text = pat.sub(repl, text)
+    return text
+
+
+def extract_emojis(text: str) -> List[str]:
+    return _EMOJI_REGEX.findall(text)
+
+
+def sanitize_emojis(
+    text: str,
+    allow_emoji: bool = True,
+    last_bot_emoji: Optional[str] = None,
+    is_care_mode: bool = False,
+) -> str:
+    if not text:
+        return text
+
+    # Sickness / Care mode: strictly strip all laughing or flirty emojis
+    if is_care_mode:
+        text = _LAUGHING_OR_FLIRTY_EMOJIS.sub("", text)
+
+    emojis = extract_emojis(text)
+    if not emojis:
+        return text
+
+    if not allow_emoji:
+        text = _EMOJI_REGEX.sub("", text)
+        return re.sub(r"\s+", " ", text).strip()
+
+    if last_bot_emoji and last_bot_emoji in emojis:
+        # Never allow the same emoji twice in a row
+        text = text.replace(last_bot_emoji, "")
+        emojis = extract_emojis(text)
+
+    # Moderate to at most 1 emoji total
+    if len(emojis) > 1:
+        first = emojis[0]
+        text = _EMOJI_REGEX.sub("", text).strip()
+        text = f"{text} {first}"
+
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def validate_and_clean_response(
@@ -113,23 +214,54 @@ def validate_and_clean_response(
             q_count_last_4 = sum(1 for m in asst_msgs[-4:] if "?" in m)
             last_had_q = bool(asst_msgs and "?" in asst_msgs[-1])
 
-            # If last assistant reply had a question or 2+ questions in last 4 turns, prevent consecutive interrogation
-            if (last_had_q or q_count_last_4 >= 2) and "?" in text:
+            # Check if user message is substantive (has real content/plans, not low-energy or monosyllabic)
+            from app.chat.prompt_builder import is_low_energy_response
+            user_is_substantive = False
+            if user_message and user_message.strip():
+                user_is_substantive = (
+                    not is_low_energy_response(user_message)
+                    and len(user_message.strip().split()) >= 4
+                )
+
+            # Suppress questions ONLY when:
+            # 1. 3+ questions in last 4 turns (chronic interrogation streak), OR
+            # 2. Last had a question (or 2+ in last 4) AND user did NOT provide a substantive new message
+            # If the user actively replied with fresh substance (e.g. "bahar ghumne ka mn kr rha hai yrr"),
+            # natural follow-up questions must NOT be pruned into dead-ends!
+            should_suppress_q = False
+            if q_count_last_4 >= 3:
+                should_suppress_q = True
+            elif (last_had_q or q_count_last_4 >= 2) and not user_is_substantive:
+                should_suppress_q = True
+
+            if should_suppress_q and "?" in text:
                 sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
                 non_q_sentences = [s for s in sentences if not _ends_with_q(s)]
-                if non_q_sentences:
-                    text = " ".join(non_q_sentences).strip()
-                else:
-                    # Single sentence question - soften into a teasing observation or drop question format
+
+                # Clean sycophancy stubs from non_q_sentences to see if meaningful substance remains
+                cleaned_non_q = [
+                    re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+|hn\s+)?(?:yeh\s+|ye\s+)?(?:karna\s+)?(?:bhi\s+)?sahi\s+hai[.!,]*\s*", "", s, flags=re.I).strip()
+                    for s in non_q_sentences
+                ]
+                cleaned_non_q = [
+                    re.sub(r"\b(?:oooh?,?\s+|ohh?,?\s+)?(?:[\w']+\s+){0,3}(?:ka|ki|ke)?\s*vibe\s+(?:bhi\s+)?ac*h*a\s+(?:hai|hota\s+hai)[.!]*\s*", "", s, flags=re.I).strip()
+                    for s in cleaned_non_q
+                ]
+                meaningful_non_q = [s for s in cleaned_non_q if len(s.split()) >= 4]
+
+                if meaningful_non_q:
+                    text = " ".join([s for s in non_q_sentences if s.strip()]).strip()
+                elif not user_is_substantive:
+                    # User is dry/short — convert question to a light observation rather than empty dead-end
                     if persona_name.lower().startswith("riya") and re.search(r"\b(?:coding|code|development|engineer|cs|language)\b", text, flags=re.I):
                         text = "haha pata hi tha mujhe, pakka bug dekh ke khush hone walo me se ho 😂"
                     else:
                         text = re.sub(r"^(?:kya\s+|waise\s+kya\s+)", "", text, flags=re.I)
                         text = re.sub(r"\?\s*[\U00010000-\U0010ffff\s]*$", "", text).strip()
 
-    # Strip banned canned robotic openers ("Achha suna!", "Sahi hai!", "Hey there!", "Wow," "haha sahi kaha!", "Bilkul sahi")
+    # Strip banned canned robotic openers ("Achha suna!", "Sahi hai!", "Hey there!", "Wow," "haha sahi kaha!", "Bilkul sahi", "haha sahi hai")
     banned_opener_match = re.match(
-        r"^(?:achha\s+suna|acha\s+suna|sahi\s+hai|bilkul\s+sahi|haha\s+sahi\s+kaha|sahi\s+kaha|hay\s+there|hey\s+there|wow)[!.,\s🙂😊]*\s*(.+)$",
+        r"^(?:achha\s+suna|acha\s+suna|(?:haha\s+|hehe\s+|haan\s+|ha\s+)?sahi\s+hai|bilkul\s+sahi|haha\s+sahi\s+kaha|sahi\s+kaha|hay\s+there|hey\s+there|wow)[!.,\s🙂😊]*\s*(.+)$",
         text, flags=re.I | re.DOTALL
     )
     if banned_opener_match:
@@ -146,6 +278,19 @@ def validate_and_clean_response(
     text = re.sub(r"\bphir\s+kya\s+khayal\s+hai\s*\??\s*", "", text, flags=re.I)
 
     # ── THERAPIST / COUNSELOR CLOSURE PHRASES (screenshots-exact bans) ──
+    # Universal "Kabhi kabhi (toh) ... (accha/bura/maza/zaroori/sukoon/freedom) ... (hota/aata/lagta/milta/hai)"
+    text = re.sub(
+        r"(?:^|[.!?\n\U00010000-\U0010ffff]\s*)[^.!?\n\U00010000-\U0010ffff]*\bkabhi\s+kabhi\s+(?:toh\s+)?.*?(?:ac*h*a|bura|maz[a|aa]+|zaroori|sukoon|peaceful|relaxing|freedom)\s+(?:bhi\s+)?(?:hota|aata|lagta|milta|rehta|hai)[^.!?\n]*[.!?]*",
+        "",
+        text,
+        flags=re.I
+    ).strip()
+    text = re.sub(
+        r"\bkabhi\s+kabhi\s+(?:toh\s+)?[^.!?\n]*(?:ac*h*a\s+hota\s+hai|maz[a|aa]+\s+(?:bhi\s+)?(?:aata|hota)\s+hai|zaroori\s+hota\s+hai|sukoon\s+milta\s+hai)[.!]*\s*",
+        "",
+        text,
+        flags=re.I
+    ).strip()
     # "Kabhi kabhi chill/aaram karna bhi zaroori hota hai"
     text = re.sub(r"\bkabhi\s+kabhi\s+(?:toh\s+)?(?:chill|aaram|rest|sukoon)\s+(?:karna|karte|lena)\s+bhi\s+zaroori\s+hota\s+hai[.!]*\s*", "", text, flags=re.I).strip()
     # "Jab bhi mood ho, toh share/bata/bol karna"
@@ -164,6 +309,10 @@ def validate_and_clean_response(
     text = re.sub(r"\bkabhi\s+kabhi\s+(?:toh\s+)?lambi\s+baatein\s+(?:bhi\s+)?karni\s+padti\s+(?:hain|hai)[.!]*\s*", "", text, flags=re.I).strip()
     # "theek hai! Jab bhi mood ho" combo
     text = re.sub(r"\btheek\s+hai[.!,]*\s+jab\s+bhi\s+mood\s+ho\b[^.!?]*[.!]*\s*", "", text, flags=re.I).strip()
+    # "Kabhi kabhi silence bhi accha hota hai" — therapist dead-end closure phrase
+    text = re.sub(r"\b(?:koi\s+baat\s+nahi[.!]*\s*)?(?:kabhi\s+kabhi\s+)?silence\s+bhi\s+ac?ch?a\s+(?:hota|lagta)\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    # "acha koi aur interesting topic hai ya phir aise hi chill karte hain" — forced robotic redirect
+    text = re.sub(r"\b(?:acha\s+)?koi\s+aur\s+interesting\s+topic\s+hai\s+(?:ya\s+phir\s+)?(?:aise\s+hi\s+)?chill\s+(?:karte\s+hain|kare[a-z]*)\s*\??\s*", "", text, flags=re.I).strip()
     # Restore capitalization if stripping left lowercase
     if text and text[0].islower() and len(text) > 1:
         text = text[0].upper() + text[1:]
@@ -180,6 +329,18 @@ def validate_and_clean_response(
     text = re.sub(r"(?:^|[.!]\s*)sahi\s+kaha\s+yaar[.!]*\s*", "", text, flags=re.I).strip()
     # "bilkul sahi" / "ekdum sahi" as standalone opener validation
     text = re.sub(r"^(?:bilkul|ekdum|haan\s+bilkul)\s+sahi[.!,]*\s*", "", text, flags=re.I).strip()
+    # Strip canned sycophantic agreement openers: 'sahi hai', 'haha sahi hai', 'ha ye sahi hai', 'sahi baat hai', 'ye karna sahi hai'
+    text = re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+|hn\s+)?(?:yeh|ye)\s+(?:karna\s+)?(?:bhi\s+)?sahi\s+hai[.!,]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+|hn\s+)?sahi\s+baat\s+hai[.!,]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+|hn\s+)?sahi\s+hai[.!,]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+|hn\s+)?sahi\s+(?:keh|bol)\s+rahe\s+ho[.!,]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:dono\s+hi|ye\s+bhi)\s+sahi\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"^(?:haha\s+|hehe\s+|haan\s+|ha\s+)?(?:yeh\s+)?ac?ch?a\s+hai[.!,]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bbas\s+haan\s+haan\s+hi\s+chal\s+raha\s+hai\s+aaj\b[?!.,\s😂😜]*", "", text, flags=re.I).strip()
+    # Strip LinkedIn cheerleading cliches
+    text = re.sub(r"\blekin\s+(?:woh|wo)\s+toh\s+har\s+jagah\s+hota\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:woh|wo)\s+toh\s+har\s+jagah\s+hota\s+hai[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bhar\s+din\s+kuch\s+naya\s+seekhne\s+ko\s+milta\s+hai[.!]*\s*", "", text, flags=re.I).strip()
     # Specific banned brochure lines (health/life advice)
     text = re.sub(r"\b(?:ye|yeh|coffee|chai|kuch\s+bhi)\s+(?:health\s+ke\s+liye|sehat\s+ke\s+liye)\s+(?:accha|achha|bekar|bura)\s+(?:hota|rehta)\s+hai[.!]*\s*", "", text, flags=re.I).strip()
     # Restore capitalization if stripping left lowercase
@@ -256,7 +417,9 @@ def validate_and_clean_response(
     if user_message and user_message.strip():
         um_clean = user_message.strip()
         if (um_clean[0].islower() or re.search(r"\b(?:kkrh|mja|bs|yrr|esa|nhi|ni)\b", um_clean, flags=re.I)) and len(text) > 1:
-            if not text.startswith("I "):
+            # Do NOT lowercase if first word is an uppercase acronym (e.g. BGMI, AWM, PUBG, AI) or English "I "
+            first_acronym = bool(re.match(r"^[A-Z]{2,}\b", text))
+            if not text.startswith("I ") and not first_acronym:
                 text = text[0].lower() + text[1:]
 
     text = re.sub(r"\s{2,}", " ", text).strip()
@@ -270,6 +433,30 @@ def validate_and_clean_response(
         if any(term in text_lower for term in ["rajiv institute", "medical college mein hoon", "medical college me hu"]):
             if not any(ack in text_lower for ack in ["sahi pakda", "galti", "confuse", "design college", "match nahi"]):
                 text = "Main Raipur mein ek local design college se padh rahi hoon! Medical kahan se aa gaya haha 😅 Waise tum kis college se ho?"
+
+    # Companion Self-Reference Gender Agreement Guard
+    female_personas = {"diya", "riya", "riya kapoor", "luna", "zara", "ananya"}
+    is_companion_female = persona_name.lower() in female_personas
+
+    if is_companion_female:
+        # Female persona must never say "samajh gaya", "main soch raha tha", etc.
+        text = re.sub(r"\b(?:ohh?\s+)?samajh\s+gaya\b", "samajh gayi", text, flags=re.I)
+
+        def _to_fem_continuous(m):
+            prefix = m.group(1)
+            verb = m.group(2)
+            ending = m.group(3)
+            new_ending = "rahi thi" if "tha" in ending.lower() else "rahi hu"
+            return f"{prefix}{verb} {new_ending}"
+
+        text = re.sub(
+            r"\b((?:main|mai)\s+(?:[\w']+\s+){0,3})(soch|bol|kar|dekh|maan|jaan|keh)\s+raha\s+(hu|hoon|tha)\b",
+            _to_fem_continuous,
+            text,
+            flags=re.I
+        )
+        text = re.sub(r"\b(?:main|mai)\s+(?:[\w']+\s+){0,2}(thak|aa|chala|nikal)\s+gaya\b", r"main \1 gayi", text, flags=re.I)
+        text = re.sub(r"\b(?:main|mai)\s+free\s+ho\s+gaya\b", "main free ho gayi", text, flags=re.I)
 
     # 7. Gender & Pronoun Consistency Guard
     if user_gender == "male":
@@ -340,14 +527,15 @@ def validate_and_clean_response(
         text = re.sub(r"\b(?:stress|tension)\s+mat\s+le\b", "stress mat lo", text, flags=re.I)
         text = re.sub(r"\bwait\s+kar\b", "wait karo", text, flags=re.I)
         text = re.sub(r"\brelax\s+kar\b", "relax karo", text, flags=re.I)
-        text = re.sub(r"\bchill\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "chill karo", text, flags=re.I)
-        text = re.sub(r"\benjoy\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "enjoy karo", text, flags=re.I)
-        text = re.sub(r"\btry\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "try karo", text, flags=re.I)
-        text = re.sub(r"\bcheck\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "check karo", text, flags=re.I)
-        text = re.sub(r"\bstart\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "start karo", text, flags=re.I)
-        text = re.sub(r"\bhelp\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "help karo", text, flags=re.I)
-        text = re.sub(r"\btext\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "text karo", text, flags=re.I)
-        text = re.sub(r"\bmessage\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta))", "message karo", text, flags=re.I)
+        text = re.sub(r"\bchill\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "chill karo", text, flags=re.I)
+        text = re.sub(r"\benjoy\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "enjoy karo", text, flags=re.I)
+        text = re.sub(r"\btry\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "try karo", text, flags=re.I)
+        text = re.sub(r"\bcheck\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "check karo", text, flags=re.I)
+        text = re.sub(r"\bstart\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "start karo", text, flags=re.I)
+        text = re.sub(r"\bhelp\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "help karo", text, flags=re.I)
+        text = re.sub(r"\btext\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "text karo", text, flags=re.I)
+        text = re.sub(r"\bmessage\s+kar\b(?!\s*(?:o|lena|liya|ke|te|ti|ta|leti|leta|lete|li|le|rahi|raha|rahe|sakti|sakta|sakenge))", "message karo", text, flags=re.I)
+        text = re.sub(r"\b(enjoy|chill|baat|kaam|try)\s+karo\s+(leti|leta|lete|rahi|raha|liya)\b", r"\1 kar \2", text, flags=re.I)
         text = re.sub(r"\bchinta\s+mat\s+kar\b", "chinta mat karo", text, flags=re.I)
         text = re.sub(r"\bload\s+mat\s+le\b", "load mat lo", text, flags=re.I)
         text = re.sub(r"\btum\s+se\s+janne\s+k[ai]\s+curiosity\b", "tumhe janne ki curiosity", text, flags=re.I)
@@ -469,19 +657,97 @@ def validate_and_clean_response(
 
     # 11. Festival Context Sanitizer
     if user_message and "navratri" in user_message.lower():
-        text = re.sub(r"\bnavratri\s+aane\s+wali\s+hai\b", "Navratri ka vibe toh chal hi raha hai", text, flags=re.I)
+        if any(w in user_message.lower() for w in ["khatam", "khtam", "over", "ho gya", "ho gaya", "nikal", "ended"]):
+            text = re.sub(r"\bnavratri\s+(?:toh\s+)?(?:chal\s+raha\s+hai|abhi\s+hai)\b[.!]*", "Navratri toh abhi khatam ho gaya na", text, flags=re.I)
+        else:
+            text = re.sub(r"\bnavratri\s+aane\s+wali\s+hai\b", "Navratri ka vibe toh chal hi raha hai", text, flags=re.I)
         text = re.sub(r"\bexact\s+dates(?:\s+ya\s+events)?\s+maine\s+abhi\s+check\s+nahi\s+kiye(?:\s+honestly)?\b", "vibe kaafi accha chal raha hai", text, flags=re.I)
+
+    # 12. Canned Flattery, Corporate Morals & Cliché Stripper
+    # A. Strip essay-style philosophical conclusions ("Aise moments hi toh game/life ko mazedaar banate hain")
+    text = re.sub(
+        r"[.,!?]?\s*\b(?:aise|yehi|wahi)\s+(?:hi\s+)?(?:moments|baatein|pal)\s+(?:hi\s+toh\s+)?.*?(?:mazedaar|yaadgar|khaas|zaroori)\s+banate\s+hain[.!]*",
+        "",
+        text,
+        flags=re.I,
+    )
+    # B. Strip exaggerated cartoon flattery ("Tumhe toh MVP award milna chahiye")
+    text = re.sub(
+        r"[.,!?]?\s*\btumhe\s+toh\s+(?:mvp|oscar|award)\s+(?:award\s+)?milna\s+chahiye[.!]*",
+        "",
+        text,
+        flags=re.I,
+    )
+    # C. Strip generic lifestyle preach ("thoda relax bhi zaroori hai", "thoda chill bhi zaroori hai")
+    text = re.sub(
+        r",?\s*\bthoda\s+(?:relax|chill|aaram)\s+bhi\s+zaroori\s+hai\b",
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(r"\b(?:kaam\s+ke\s+saath\s+)?thoda\s+balance\s+bhi\s+zaroori\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bkabhi\s+kabhi\s+single\s+rehna\s+bhi\s+ac*h*a\s+hota\s+hai[,!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bthoda\s+freedom\s+milta\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bjab\s+tak\s+na\s+ho\s+tab\s+tak\s+apna\s+time\s+enjoy\s+karo[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\badventure\s+bhi\s+milta\s+hai\s+aur\s+relaxation\s+bhi[!.]*\s*", "", text, flags=re.I).strip()
+
+    # D. Strip generic robotic canned phrase ("X ka mazaa hi alag hai", "X ka apna hi maza hai", "X ki vibe hi alag hai", "X ka vibe accha hai")
+    text = re.sub(r"\b(?:\w+\s+){0,4}(?:ka|ki|ke)\s+(?:toh\s+)?(?:apna\s+hi\s+|alag\s+hi\s+)?maz[a|aa]+(?:\s+hi\s+alag)?\s+(?:hota\s+hai|hai|he)[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:\w+\s+){0,4}ki\s+vibe\s+hi\s+alag\s+(?:hai|hota\s+hai)[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:\w+\s+){0,3}(?:ka|ki)\s+vibe\s+(?:toh\s+)?(?:thoda\s+)?(?:different|alag)\s+(?:hota|rehta)\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:oooh?,?\s+|ohh?,?\s+|wah,?\s+)?(?:[\w']+\s+){0,3}(?:ka|ki|ke)?\s*vibe\s+(?:bhi\s+)?ac*h*a\s+(?:hai|hota\s+hai)[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bac*h*a\s+vibe\s+(?:hai|hota\s+hai)[.!]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:ka|ki|ke)\s+vibe\s+ac*h*a\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\btime\s+spend\s+karna\s+hi\s+maza\s+hai[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bbadi\s+maz[a|aa]+\b", "bada maza", text, flags=re.I)
+
+    # 13. Natural Meal & Temporal Real-Time Guards
+    # If user corrects companion about past meal (e.g. lunch was hours ago)
+    if user_message:
+        um_low = user_message.lower()
+        is_lunch_past = "lunch" in um_low and any(w in um_low for w in ["pehle", "ho chuka", "ho gya", "ho gaya", "kab ka", "khatam"])
+        if is_lunch_past:
+            # Replace canned "samajh gaya/gayi" openers with a charming real-world realization
+            text = re.sub(
+                r"^(?:ohh?\s+)?(?:acha\s+)?samajh\s+(?:gayi|gaya)[.,!\s😂]*",
+                "haha arey haan time dekhna bhool gayi thi 😂 ",
+                text,
+                flags=re.I
+            ).strip()
+
+    # Time-of-day meal guard: Strip unseasonal lunch inquiries in the evening/night
+    try:
+        from app.utils.time_context import get_runtime_time_context
+        t_ctx = get_runtime_time_context()
+        day_p = t_ctx.get("day_period", "")
+    except Exception:
+        day_p = ""
+
+    if day_p in ("evening", "night"):
+        text = re.sub(r"\b(?:tumhari\s+)?lunch(?:\s+break)?\s+kaisi\s+(?:gayi|rahi|thi)\s*\??\s*", "", text, flags=re.I).strip()
+        text = re.sub(r"\blunch(?:\s+break)?\s+kaisa\s+(?:raha|tha)\s*\??\s*", "", text, flags=re.I).strip()
+
+    # 14. Survey, Interrogation & Questionnaire Demands Stripper
+    # Strip demands to "detail me bata do"
+    text = re.sub(r",?\s*\b(?:thoda\s+)?detail\s+me(?:in)?\s+bata\s*(?:do|na|o)?[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bdetail\s+me(?:in)?\s+batao[!.]*\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bthoda\s+detail\s+me(?:in)?[!.]*\s*", "", text, flags=re.I).strip()
+
+    # 15. Stock Bot Transitions & Filler Questions Stripper
+    text = re.sub(r"\bthoda\s+chill\s+karne\s+ka\s+waqt\s+mil\s+raha\s+hai\s*\??\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\bchill\s+karne\s+ka\s+waqt\s+mil\s+raha\s+hai\s*\??\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\b(?:acha\s+toh\s+|toh\s+)?ab\s+kya\s+plan\s+hai\s*,\s*\??\s*", "ab kya plan hai? ", text, flags=re.I).strip()
 
     # Final safety fallback
     if not text:
         from app.utils.language_detector import detect_language
         lang = detect_language(user_message or "")
         if lang == "hindi":
-            text = "अरे सच में? थोड़ा और बताओ 😊"
+            text = "अरे सच में? सही है यार 😂"
         elif lang == "hinglish":
-            text = "Haha sach me? thoda aur batao 😂"
+            text = "Haha sach me? Sahi hai phir toh 😂"
         else:
-            text = "Haha wait, really? Tell me more 🙂"
+            text = "Haha really? That's awesome then 😂"
 
     return text
 
@@ -489,7 +755,7 @@ def validate_and_clean_response(
 DANGLING_END_WORDS = {
     "usually", "mostly", "basically", "especially", "actually", "probably",
     "aur", "and", "ki", "ke", "ka", "ko", "ya", "but", "lekin", "agar",
-    "kyunki", "because", "so", "jaise", "like"
+    "kyunki", "because", "so", "jaise", "like", "toh", "to"
 }
 
 
@@ -534,7 +800,11 @@ def clean_and_assemble_lines(raw_lines: List[str]) -> List[str]:
                     or next_line.endswith("?")
                 )
                 if not is_separate_thought:
-                    merged_line = f"{line} {next_line[0].lower() + next_line[1:] if len(next_line) > 1 else next_line}"
+                    # Do not lowercase the first letter if the word is an acronym or already has uppercase letters (e.g. AWM, BGMI, AI, PUBG)
+                    if len(next_line) > 1 and next_line[0].isupper() and not next_line[1].isupper():
+                        merged_line = f"{line} {next_line[0].lower() + next_line[1:]}"
+                    else:
+                        merged_line = f"{line} {next_line}"
                     if not is_dangling_line(merged_line):
                         valid_lines.append(merged_line)
                     i += 2
@@ -556,14 +826,23 @@ def arrange_and_format_response(
     user_gender: Optional[str] = None,
     preferred_pronoun: Optional[str] = "tum",
     user_message: Optional[str] = None,
+    allow_emoji: bool = True,
+    last_bot_emoji: Optional[str] = None,
+    is_care_mode: bool = False,
+    force_single_line: bool = False,
 ) -> str:
     """
     Arranges, styles, and formats the raw LLM response from OpenAI according to:
       1. User-specific context (preferred pronoun 'tum'/'aap', grammatical gender agreement).
       2. Persona character & natural mobile texting format (brevity, casing, emoji moderation).
       3. Clean-up of AI leaks, code fences, corporate assistant disclaimers, or metadata tags.
-      4. Arranging multi-line / verbose responses into clean conversational chat format without dangling/incomplete sentences.
+      4. Banned metaphor cleanup (removing "trailer mode", "negotiation", "budget", "vibe hijack", "araam mode").
+      5. Strict Care Mode emoji and tone guard (no laughing/flirty emojis during sickness/distress).
+      6. Preserving structural variety (allowing short 3-8 word single-line texts, lowercase, not forcing a 2-line split).
     """
+    if is_user_in_distress(user_message):
+        is_care_mode = True
+
     # 1. Base validation and cleaning with user context
     text = validate_and_clean_response(
         raw_response=raw_response,
@@ -574,8 +853,11 @@ def arrange_and_format_response(
         user_message=user_message,
     )
 
-    # 2. Convert formal dashes and em-dashes (—, –) to newline or space
-    text = re.sub(r"\s*[—–]\s*", "\n", text)
+    # 1b. Clean banned metaphor phrases
+    text = clean_banned_metaphors(text)
+
+    # 2. Convert formal dashes and em-dashes (—, –) to space
+    text = re.sub(r"\s*[—–]\s*", " ", text)
     text = re.sub(r"\s+-\s+", " ", text)
     # Convert formal semicolons to spaces
     text = text.replace(";", "")
@@ -592,29 +874,42 @@ def arrange_and_format_response(
     text = re.sub(r"\?{2,}", "?", text)
     text = re.sub(r"!{2,}", "!", text)
 
-    # 4. If single line without newline, split two thoughts naturally on sentence boundary
-    if "\n" not in text:
-        text = re.sub(
-            r"(?<=[.?!😂😜👀😏🥺])\s+(?=(?:waise|wese|tum|aur|batao|kya|[A-Z]))",
-            "\n",
-            text,
-            count=1,
-            flags=re.I,
-        )
+    # Moderate exclamation marks: Limit to at most 1 '!' in the entire reply
+    if text.count("!") > 1:
+        first_excl = text.find("!")
+        before = text[:first_excl + 1]
+        after = text[first_excl + 1:].replace("!", "")
+        text = (before + after).strip()
 
-    # 5. Strip trailing formal full stop (.) and commas at end of lines
+    # 4. Emoji rules: at most 1 in 3 messages, no repeated emoji, no laughing emoji in care mode
+    text = sanitize_emojis(
+        text,
+        allow_emoji=allow_emoji,
+        last_bot_emoji=last_bot_emoji,
+        is_care_mode=is_care_mode,
+    )
+
+    # 5. Structure variety: do NOT force a newline split on single-line replies!
+    # If force_single_line is requested, join any newlines into a single line
+    if force_single_line:
+        text = text.replace("\n", " ")
+
+    # Strip trailing formal full stop (.) and commas at end of lines
     raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in text.split("\n") if l.strip()]
 
-    # 6. Clean dangling fragments & stitch mid-sentence breaks into complete sentences
+    # Clean dangling fragments & stitch mid-sentence breaks into complete sentences
     valid_lines = clean_and_assemble_lines(raw_lines)
     if not valid_lines:
         from app.utils.language_detector import detect_language
         lang = detect_language(user_message or "")
         if lang == "hindi":
-            return "अरे सच में? थोड़ा और बताओ 😊"
+            return "अरे सच में? क्या हुआ यार"
         elif lang == "hinglish":
-            return "Haha sach me? thoda aur batao 😂"
+            return "kya hua yaar, sab theek?"
         else:
-            return "Haha wait, really? Tell me more 🙂"
+            return "what happened, all good?"
+
+    if force_single_line:
+        return " ".join(valid_lines)
 
     return "\n".join(valid_lines[:2])

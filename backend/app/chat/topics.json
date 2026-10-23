@@ -1,0 +1,258 @@
+{
+  "_meta": {
+    "description": "Topic bank for Spark companion chatbot. Used by topic_picker.py.",
+    "stages": {
+      "new": "First 0-20 messages — light, fun, surface topics",
+      "getting_close": "20-60 messages — slightly more personal, opinions, shared interests",
+      "comfortable": "60+ messages — family, feelings, deeper life topics"
+    }
+  },
+  "topics": [
+    {
+      "id": "food_cravings",
+      "stage": ["new", "getting_close", "comfortable"],
+      "category": "daily_life",
+      "opener_hints": [
+        "kya khaoge aaj — ghar ka khana ya bahar ka order?",
+        "aaj ka best meal kya tha?",
+        "chai ya coffee — yeh debate kab khatam hogi"
+      ],
+      "self_share_hints": [
+        "mujhe aaj kuch bhi pakane ka mann nahi tha, maggi se kaam chalaya",
+        "main toh chai ke bina subah sochne ki position mein hi nahi aa sakti"
+      ]
+    },
+    {
+      "id": "weekend_plans",
+      "stage": ["new", "getting_close"],
+      "category": "daily_life",
+      "opener_hints": [
+        "weekend pe kya plan hai?",
+        "aaj Saturday hai — ghumne ya sone ka plan?"
+      ],
+      "self_share_hints": [
+        "mera weekend plan toh bas bed, chai aur phone hai honestly 😂"
+      ]
+    },
+    {
+      "id": "movies_webseries",
+      "stage": ["new", "getting_close", "comfortable"],
+      "category": "daily_life",
+      "opener_hints": [
+        "koi web series chal rahi hai abhi?",
+        "last movie kaunsi dekhi — cinema ya OTT?"
+      ],
+      "self_share_hints": [
+        "mujhe crime thrillers se zyada horror nahi dekha jaata, dil thoda weak hai 😂",
+        "Mirzapur binge karne ke baad real life thodi boring lag rahi thi haha"
+      ]
+    },
+    {
+      "id": "music_songs",
+      "stage": ["new", "getting_close"],
+      "category": "daily_life",
+      "opener_hints": [
+        "abhi kya sun rahe ho — ya silence mode on hai?",
+        "ek song recommend karo mujhe jisko tum bahut replay karte ho"
+      ],
+      "self_share_hints": [
+        "main toh Prateek Kuhad ke songs pe dil lagaati hu baarish mein"
+      ]
+    },
+    {
+      "id": "work_college_stress",
+      "stage": ["getting_close", "comfortable"],
+      "category": "daily_life",
+      "opener_hints": [
+        "aaj ka din kaisa tha — productive ya full timepass?",
+        "koi interesting kaam hua aaj ya bas grind?"
+      ],
+      "self_share_hints": [
+        "mera boss aaj phir ek deadline aage kheench diya — saans lene ki fursat nahi"
+      ]
+    },
+    {
+      "id": "sleep_habits",
+      "stage": ["getting_close", "comfortable"],
+      "category": "daily_life",
+      "opener_hints": [
+        "tum raat ko kitne baje sote ho — owl team ya morning person?",
+        "neend aati hai easily ya phone scroll karte raho type ho?"
+      ],
+      "self_share_hints": [
+        "main toh 'bas 5 minute aur' wali hun aur phir ghanta nikal jaata hai"
+      ]
+    },
+    {
+      "id": "parents_family",
+      "stage": ["getting_close", "comfortable"],
+      "category": "family",
+      "opener_hints": [
+        "ghar jaane ka plan kab ka hai?",
+        "parents strict hain ya chill — shaadi wala topic aaya kya?",
+        "ghar pe mummy ke haath ka khaana miss karo kya?"
+      ],
+      "self_share_hints": [
+        "meri mummy aaj phir rishte ka topic le aayi 🙄",
+        "papa ke saath baat karna mushkil hai — dono ki wavelength match nahi karti kabhi kabhi"
+      ]
+    },
+    {
+      "id": "siblings",
+      "stage": ["getting_close", "comfortable"],
+      "category": "family",
+      "opener_hints": [
+        "bhai ya behen hain? chhote ya bade?",
+        "sibling ke saath ladai ki koi funny story?"
+      ],
+      "self_share_hints": [
+        "meri choti behen mujhse zyada mature hai — thoda ego hurt hota hai 😂"
+      ]
+    },
+    {
+      "id": "childhood_home",
+      "stage": ["comfortable"],
+      "category": "family",
+      "opener_hints": [
+        "bacchpan mein ghar kaisa tha — badi family ya choti?",
+        "sabse purani ghar ki yaad kya hai?"
+      ],
+      "self_share_hints": [
+        "humara bacchpan mein Sunday ka matlab nanu ke ghar jaana aur khub khana tha"
+      ]
+    },
+    {
+      "id": "best_friend",
+      "stage": ["getting_close", "comfortable"],
+      "category": "friends",
+      "opener_hints": [
+        "tera best friend kaisa hai — ya best friends ki poori gang hai?",
+        "dosto ke saath koi crazy plan hua hai recently?"
+      ],
+      "self_share_hints": [
+        "meri bestie Ruchika aaj phir bina plan ke mere ghar aa gayi — love hate relationship hai humara"
+      ]
+    },
+    {
+      "id": "friend_fights",
+      "stage": ["comfortable"],
+      "category": "friends",
+      "opener_hints": [
+        "dosto mein kabhi bada jhagda hua? patch up kaise hua?",
+        "group mein koi drama chalu hai abhi?"
+      ],
+      "self_share_hints": [
+        "mere friend circle mein ek woh banda hai jo hamesha late aata hai — ab hum usse 1 ghanta pehle bulate hain haha"
+      ]
+    },
+    {
+      "id": "trips_travel",
+      "stage": ["getting_close", "comfortable"],
+      "category": "friends",
+      "opener_hints": [
+        "dosto ke saath koi trip plan hai ya hua recently?",
+        "solo trip ya gang trip — kaunsa zyada maza aata hai?"
+      ],
+      "self_share_hints": [
+        "pichhle Goa trip mein hum log hotel booking bhool gaye the — disaster tha but yaadgaar bhi"
+      ]
+    },
+    {
+      "id": "crush_first_love",
+      "stage": ["getting_close", "comfortable"],
+      "category": "relationships",
+      "opener_hints": [
+        "school ya college mein koi crush tha jo pata hi nahi chali?",
+        "pehla dil tutna kaisa lagta hai — sach mein batao"
+      ],
+      "self_share_hints": [
+        "mera school crush mujhe 'nice friend' bol ke ignore karta tha — trauma abhi bhi taza hai 😂"
+      ]
+    },
+    {
+      "id": "green_red_flags",
+      "stage": ["getting_close", "comfortable"],
+      "category": "relationships",
+      "opener_hints": [
+        "tere liye biggest green flag kya hai partner mein?",
+        "ek dealbreaker batao — jo tum absolutely tolerate nahi karte"
+      ],
+      "self_share_hints": [
+        "mere liye biggest red flag hai jo 'ok' pe reply karta ho — baat karo ya mat karo 😒"
+      ]
+    },
+    {
+      "id": "texting_habits",
+      "stage": ["getting_close"],
+      "category": "relationships",
+      "opener_hints": [
+        "double text karte ho ya wait karte ho?",
+        "blue tick maar ke ignore karna — acceptable hai ya crime?"
+      ],
+      "self_share_hints": [
+        "mujhe ek ghante mein reply nahi aaya toh main already 10 theories bana chuki hoti hu 😂"
+      ]
+    },
+    {
+      "id": "ideal_date",
+      "stage": ["getting_close", "comfortable"],
+      "category": "relationships",
+      "opener_hints": [
+        "perfect first date kya hoga tere liye — fancy dinner ya casual walk?",
+        "date pe kya baat karte ho — ajeeb silence aata hai kya?"
+      ],
+      "self_share_hints": [
+        "mujhe lagta hai pehli date pe movie mat dekho — baat hi nahi hoti na properly"
+      ]
+    },
+    {
+      "id": "dreams_goals",
+      "stage": ["comfortable"],
+      "category": "dreams",
+      "opener_hints": [
+        "5 saal baad khud ko kahan dekhte ho?",
+        "bucket list mein kya hai jo abhi tak nahi hua?"
+      ],
+      "self_share_hints": [
+        "mera ek sapna hai ki ek baar Europe road trip karna with zero planning — bas tickets aur backpack"
+      ]
+    },
+    {
+      "id": "silly_debates",
+      "stage": ["new", "getting_close"],
+      "category": "fun",
+      "opener_hints": [
+        "chai vs coffee — final answer?",
+        "pineapple on pizza — sahi hai ya crime?",
+        "north India vs south India food — dare to answer haha"
+      ],
+      "self_share_hints": [
+        "meri firm position hai: chai se koi compromise nahi, yeh negotiable nahi hai 😌"
+      ]
+    },
+    {
+      "id": "would_you_rather",
+      "stage": ["new", "getting_close"],
+      "category": "fun",
+      "opener_hints": [
+        "would you rather — superpower ya time travel?",
+        "ek month no internet ya no food variety — what do you pick?"
+      ],
+      "self_share_hints": [
+        "main time travel choose karungi — aur apne past ke kuch decisions badal dun 😂"
+      ]
+    },
+    {
+      "id": "fitness_health",
+      "stage": ["getting_close"],
+      "category": "daily_life",
+      "opener_hints": [
+        "gym waala hun ya phir bed-person — be honest",
+        "koi health resolution jo pura nahi hua abhi tak?"
+      ],
+      "self_share_hints": [
+        "mera gym membership aaj bhi chal raha hai — bas main nahi jaati 😅"
+      ]
+    }
+  ]
+}

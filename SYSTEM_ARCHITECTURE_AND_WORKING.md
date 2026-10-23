@@ -1,5 +1,3 @@
- or 
-
 # ✦ Spark — AI Dating & Companion Chatbot Platform
 
 ## Complete System Architecture, Working & Technical Blueprint
@@ -8,17 +6,19 @@
 
 ## 1. Executive Overview
 
-**Spark** is an enterprise-grade, modular, multi-persona AI companion platform engineered specifically to deliver authentic, human-like dating and companionship conversations. Unlike generic chatbots that sound formal, preachy, or robotic, Spark mimics the cadence, emotional intelligence, and style of real people texting on mobile phones.
+**Spark** is a production-grade, modular, multi-persona AI companion platform engineered specifically to deliver authentic, human-like dating and companionship conversations. Unlike generic chatbots that sound formal, preachy, or robotic, Spark mimics the cadence, emotional intelligence, and style of real people texting on mobile phones.
 
 ### Core Highlights:
 
-- **Multi-Persona Isolation:** Supports distinct personas (e.g., Luna the Brooklyn photographer, Ethan the Boston neuroscientist, Zara the DJ/founder, Diya the creative director).
-- **Hinglish & Natural Language Matching:** Detects whether the user is typing in English, Hindi, or Hinglish (Roman Hindi) and dynamically mirrors their conversational language style.
-- **Human Texting Illusion:** Enforces strict human texting rules (1–2 short sentences, natural punctuation, casual openers, zero "As an AI" robotic phrases).
-- **RAG-Grounded Personality (Retrieval-Augmented Generation):** Custom ChromaDB vector store injects backstory details and past memories into every conversation turn.
-- **Ultra-Low Memory Footprint (< 1MB Embedder):** Custom 384-dimensional subword hashing vectorizer enables RAG on budget cloud tiers (like Render 512MB RAM free tier) without heavy PyTorch overhead.
-- **Dual LLM Provider & Self-Healing Failover:** Primary high-speed inference via **Groq (LLaMA 3.3 70B)** with instant transparent fallback to **Anthropic Claude (3.5 Haiku)** and background health recovery via **APScheduler**.
-- **Unified Full-Stack Architecture:** Single FastAPI backend that simultaneously serves the REST API and the React 18 SPA frontend.
+- **Multi-Persona Isolation:** Supports distinct personas (Luna the Brooklyn photographer, Ethan the Baltimore neuroscientist, Zara the London/SF music tech founder, Diya the Raipur design student).
+- **Hinglish & Natural Language Matching:** Detects whether the user is typing in English, Hindi, or Hinglish (Roman Hindi) and dynamically mirrors their conversational language style without awkward translations.
+- **Human Texting Illusion:** Enforces strict human texting rules (1–2 short sentences, natural punctuation, casual openers, zero "As an AI" robotic phrases, no unsolicited preaching or sycophancy).
+- **Prompt Caching Architecture:** Restructured with a byte-identical **STATIC PREFIX** (persona identity, rules, few-shot style examples) and a **DYNAMIC RUNTIME BLOCK** (live context, RAG memories, topic suggestions). This enables OpenAI's automatic prompt caching, reducing latency and cutting input token costs by 50–80%.
+- **Live Context & Indian Festival Engine (2025–2028):** Real-time awareness of part of day, meal windows (breakfast, lunch, chai time, dinner), weekday energy, and Indian festival countdowns verified from authoritative lunisolar sources (*drikpanchang.com* & *timeanddate.com*).
+- **Deterministic Topic Suggestion Engine:** Zero-LLM, stage-aware (`new`, `getting_close`, `comfortable`) topic bank with a 20-message cooldown and persona self-share story seeds to rescue dead-ends and monosyllabic replies.
+- **Single Provider Resilient LLM Routing (OpenAI):** Primary high-speed inference via **`gpt-5.6-luna`** (`reasoning_effort="none"`, `max_completion_tokens=500`, `temperature=0.95`) with transparent failover to **`gpt-5.6-terra`** on timeout, 429 rate limit, or 5xx status.
+- **Post-Processor & Auto-Regeneration:** Strips robotic disclaimers, limits exclamation marks, and enforces length matching (`max(user_words * 2, 20)`). Automatically regenerates verbose or sycophantic replies once with a strong concise nudge, tracking daily regeneration rates and API costs.
+- **RAG-Grounded Personality:** Custom ChromaDB vector store injects backstory details and past memories into conversation turns with an ultra-low memory footprint embedder (< 1MB) suitable for free cloud tiers (Render 512MB RAM).
 
 ---
 
@@ -26,7 +26,7 @@
 
 ```mermaid
 graph TD
-    User([📱 User Browser / Mobile]) <-->|HTTPS / REST| AppServer[🚀 FastAPI Unified Server]
+    User([📱 User Browser / Mobile]) <-->|HTTPS / REST| AppServer[🚀 FastAPI Server]
 
     subgraph "Frontend Layer (React 18 + Vite)"
         UI[AppLayout & Pages]
@@ -41,26 +41,25 @@ graph TD
         Routes --> ChatEngine[🧠 Chat Engine Orchestrator]
     end
 
-    subgraph "Intelligence & Memory Pipeline"
-        ChatEngine --> PersonaLoader[📂 Persona Loader & JSON Configs]
-        ChatEngine --> RAGRetriever[🔍 RAG Retriever]
-        ChatEngine --> ConvMemory[💾 Conversation Memory]
-        ChatEngine --> LangDetector[🌐 Language & Deflection Detector]
-        ChatEngine --> PromptBuilder[📝 Prompt Builder Engine]
-        ChatEngine --> LLMRouter[🔀 LLM Provider Router]
+    subgraph "Context & Prompt Architecture"
+        ChatEngine --> ContextEngine[⏰ Live Context & Festival Calendar]
+        ChatEngine --> TopicPicker[🎯 Deterministic Topic Picker]
+        ChatEngine --> PersonaLoader[📂 Enriched Persona JSONs]
+        ChatEngine --> FewShotCache[💬 Few-Shot JSON Banks]
+        ChatEngine --> PromptBuilder[📝 Prompt Builder: Static Prefix + Dynamic Block]
     end
 
-    subgraph "Vector & Storage Layer"
-        RAGRetriever --> Embedder[⚡ 384-Dim Subword Embedder]
-        Embedder --> ChromaDB[(ChromaDB Collections)]
-        ConvMemory --> SQLite[(SQLite Database app.db)]
+    subgraph "Memory & RAG Pipeline"
+        ChatEngine --> RAGRetriever[🔍 ChromaDB Vector Retriever]
+        ChatEngine --> ConvMemory[💾 SQLite Messages & Conversation State]
     end
 
-    subgraph "LLM Cloud Infrastructure"
-        LLMRouter -->|Primary ~300 tok/s| GroqAPI[⚡ Groq LLaMA 3.3 70B]
-        LLMRouter -->|Fallback on 429/Quota| ClaudeAPI[🧠 Anthropic Claude 3.5 Haiku]
-        Scheduler[⏰ APScheduler] -.->|Probe Groq Every 12h| GroqAPI
-        Scheduler -.->|Update DB Status| SQLite
+    subgraph "LLM Cloud Infrastructure (OpenAI)"
+        PromptBuilder --> LLMRouter[🔀 LLM Router]
+        LLMRouter -->|Primary: gpt-5.6-luna| OpenAILuna[⚡ gpt-5.6-luna (reasoning=none)]
+        LLMRouter -.->|Fallback on 429/5xx| OpenAITerra[🛡️ gpt-5.6-terra]
+        ChatEngine --> PostProcessor[🧹 Validator & Single Regeneration Guard]
+        Scheduler[⏰ APScheduler] -.->|Probe models.list() Every 6h| OpenAILuna
     end
 ```
 
@@ -68,294 +67,149 @@ graph TD
 
 ## 3. End-to-End Request & Response Lifecycle
 
-When a user opens the app and sends a message, here is the exact chronological path taken across every layer of the system:
-
 ```
 [1. User Action]
-     │ User types message: "Hey Luna, kaisi ho? Aaj ka photoshoot kaisa raha?"
+     │ User types: "aaj office me bahut boring tha"
      ▼
 [2. Frontend State & Axios]
-     │ ChatContext.jsx captures text, updates local message list with 'user' bubble,
-     │ and calls POST /chat/{profile_id} with { user_id, message } via api.js
+     │ ChatContext.jsx captures text, adds user message bubble,
+     │ and calls POST /chat/{profile_id} with { user_id, message }
      ▼
 [3. FastAPI Route Handler]
-     │ app/api/routes_chat.py receives ChatRequest and delegates to chat_engine.py
+     │ app/api/routes_chat.py receives ChatRequest and invokes process_chat_message()
      ▼
-[4. Database Session & Persistence Check]
-     │ memory_store.ensure_user() & ensure_profile() verify entities in SQLite
+[4. Context & Topic Generation]
+     │ context_engine.build_live_context(): extracts hour, day part (evening),
+     │ meal window (chai/snack), and festival status (e.g. Diwali approaching in X days)
+     │ topic_picker.get_topic_suggestion(): checks chat momentum and message count
      ▼
-[5. Persona Config Loading]
-     │ persona_loader.load_persona(profile_id) reads profile JSON (backstory, rules, tone)
+[5. Prompt Assembly (Static Prefix Caching)]
+     │ prompt_builder.build_direct_prompt() compiles:
+     │  - STATIC PREFIX: Identity, global rules, enriched persona config, few-shot examples
+     │  - DYNAMIC BLOCK: Live context, topic suggestion, rolling summary, RAG memories
      ▼
-[6. RAG Context Retrieval]
-     │ retriever.retrieve_context() queries ChromaDB collection `profile-{id}`
-     │ embedder.py turns user message into a 384-dim normalized vector
-     │ ChromaDB returns top-k backstory facts relevant to "photoshoot"
+[6. OpenAI Inference & Routing]
+     │ Primary call to gpt-5.6-luna (max_completion_tokens=500, reasoning_effort="none")
+     │ On 429/timeout/5xx -> retry once with gpt-5.6-terra
      ▼
-[7. Short-Term History Retrieval]
-     │ conversation_memory.get_conversation_history() fetches last 10 messages from SQLite
+[7. Post-Processing & Quality Regeneration Guard]
+     │ If reply length > max(user_words * 2, 20) OR contains 2+ praise phrases:
+     │   -> Triggers single regeneration with brevity/anti-praise nudge
+     │ response_validator: cleans code fences, dangling mid-sentence breaks, limits '!'
      ▼
-[8. Language & Safety Analysis]
-     │ language_detector.py detects Hinglish keywords -> adds Hinglish directive
-     │ prompt_builder checks for political/religious terms via regex
+[8. Database Persistence & Background Memory Worker]
+     │ SQLite stores user message and assistant reply
+     │ ConversationState updates topics discussed, mood, and relationship stage
+     │ FastAPI BackgroundTasks extracts long-term user facts into UserMemory & ChromaDB
      ▼
-[9. Prompt Assembly]
-     │ prompt_builder.build_final_prompt() formats:
-     │ System Prompt = Persona Identity + RAG Backstory + Human Rules + Language Directive
-     │ History = [User/Assistant turns] + Latest User Message
-     ▼
-[10. LLM Router & Generation]
-     │ llm_router.route_and_generate() checks SQLite LLMStatus:
-     │  - Tries Groq (llama-3.3-70b-versatile)
-     │  - If Groq rate limit / quota fails -> silently falls back to Claude Haiku
-     ▼
-[11. Persistence]
-     │ conversation_memory.persist_exchange() writes both user query and AI reply
-     │ to SQLite `messages` table in a single transaction
-     ▼
-[12. Response Delivery]
-     │ FastAPI returns { reply: "..." } to React frontend
-     │ ChatContext stops typing indicator and renders assistant message bubble
+[9. Response to Frontend]
+     │ Returns formatted, authentic reply to React UI
 ```
 
 ---
 
-## 4. Persona Architecture (Plugin-Style Configs)
+## 4. Persona Roster & Deep Enriched Backstories
 
-Every AI companion is defined as a standalone JSON configuration inside `backend/app/personas/configs/`.
+Spark personas are not blank chatbots. Each possesses authentic family ties, named friends, strong opinions, distinct texting habits, and light relationship history:
 
-### Active Personas in System:
-
-1. **Luna (`profile_1`)**: Brooklyn-based 35mm film photographer, dry wit, authentic, low-key, grounded.
-2. **Ethan (`profile_2`)**: Boston neuroscience PhD researcher, charmingly nerdy, passionate about cognition and music.
-3. **Zara (`profile_3`)**: NYC / Berlin startup founder and underground techno DJ, bold, unfiltered, fast-paced.
-4. **Diya (`profile_diya_...`)**: Mumbai creative director, witty, loves art galleries, coffee, and urban aesthetics.
-
-### Persona JSON Schema:
-
-```json
-{
-  "id": "profile_1",
-  "name": "Luna",
-  "age": 26,
-  "gender": "Female",
-  "country": "United States",
-  "city": "Brooklyn, New York",
-  "short_bio": "Brooklyn-based photographer with an eye for quiet moments...",
-  "avatar_url": "/avatars/luna.png",
-  "personality_traits": ["observant", "warm", "dry humor", "curious", "grounded"],
-  "tone": "relaxed, warm, low-key witty, authentic",
-  "backstory": "Luna is a photographer living in Greenpoint, Brooklyn...",
-  "initial_openers": [
-    "Hey 🙂 How's your day going?",
-    "Hey. What have you been up to today?"
-  ],
-  "conversation_style_rules": [
-    "Texting style: write like a real person typing on a phone — mostly 1 to 2 short sentences.",
-    "Lower-case beginnings and light punctuation feel natural to her.",
-    "Acknowledge the user's emotion first before moving the conversation forward.",
-    "Ask at most one question per message, frequently ask zero.",
-    "Zero politics and zero religion: deflect playfully, never say 'As an AI'."
-  ],
-  "system_prompt_template": "You are Luna, 26, living in Brooklyn... {backstory}..."
-}
-```
-
-### Automatic Sync on Application Startup (`app/main.py`):
-
-- Reads all JSON configs from `backend/app/personas/configs/`.
-- Upserts corresponding records in SQLite `Profile` table.
-- Chunks backstory and traits into ChromaDB collection `profile-{profile_id}`.
+| Persona | Age & City | Profession & Vibe | Core Flavour & Teasing Ammunition |
+| :--- | :--- | :--- | :--- |
+| **Luna** | 26, Brooklyn | 35mm Film Photographer | Dry wit, low-key, values silence; despises sweetened coffee & digital photography perfection; dad is a retired upstate NY carpenter, best friend Maya is brutally honest. |
+| **Ethan** | 29, Baltimore | Neuroscience Researcher | Thoughtful, nerdy warmth, unpretentious; obsesses over pour-over coffee to 0.1g; hates truffle oil ("synthetic perfume"); sister Chloe roasts his messy bachelor flat. |
+| **Zara** | 24, San Francisco | Music Tech Founder & DJ | London roots, punchy, direct, sarcastic warmth; Brick Lane curry lover; hates flakiness and over-compressed pop; Toby is her studio co-producer. |
+| **Diya** | 21, Raipur | Design Student (UI/UX) | Warm, easygoing, effortless Hinglish; adrak chai devotee (elaichi is an imposter); loves late-night scooty rides to Telibandha; Ruchika is her midnight momos partner. |
 
 ---
 
-## 5. Human Texting & Conversational Engine
+## 5. Live Context & Indian Festival Engine (2025–2028)
 
-The prompt engineering engine in `backend/app/chat/prompt_builder.py` is the heart of Spark's human persona illusion.
+The context engine (`backend/app/chat/context_engine.py`) provides dynamic grounded awareness:
 
-### Strict Conversation Rules Injected into LLM:
-
-1. **Length & Pacing:** Text like a real phone user — **1 to 2 short sentences** per turn. Never send bullet points, paragraphs, or essay-length replies.
-2. **First Message Rule:** First greeting is capped at **8 to 12 words max**.
-3. **Question Discipline:** Ask at most **one question**, and frequently **zero questions** (just react like a normal person).
-4. **Emotional Resonance First:** Acknowledge the user's mood or emotion before changing topics.
-5. **No Robot Hallmarks:** Strictly forbidden from saying:
-   - *"As an AI..."*
-   - *"How can I assist you today?"*
-   - *"I do not possess personal feelings."*
-   - *"I hope this message finds you well."*
-
-### Dynamic Language Adaptation (`language_detector.py`):
-
-The system analyzes incoming user messages for vocabulary:
-
-- **English input:** Responds in natural, conversational English.
-- **Hindi / Hinglish input:** Detects terms such as *"kya", "kaisi", "batao", "mast", "yaar", "achha", "aaj", "kuch"*.
-- **Directive injected:**
-  > *"The user is texting in Hinglish / Hindi. Respond naturally in casual, conversational Hinglish (Roman script). Blend Hindi and English words naturally, exactly how young urban friends text."*
-  >
-
-### Controversy & Safety Deflection:
-
-Regex patterns filter political and religious inquiries:
-
-- If political figures or religious debates are detected, the system executes a playful human deflection:
-  - *Example:* *"haha yaar politics pe debate nahi karte, life is too short for that 😅 Tell me something fun about your day instead!"*
+- **Time-of-Day:** Early morning (before 5 AM), Morning (5–10 AM), Late Morning (10 AM–12 PM), Noon (12–2 PM), Afternoon (2–5 PM), Evening (5–8 PM), Night (8–11 PM), Late Night (11 PM+).
+- **Meal Windows:** Breakfast (7–10 AM), Lunch (12–3 PM), Chai/Snack (4–6 PM), Dinner (7–10 PM), Late Night cravings (11 PM+). Prevents unseasonal meal questions (e.g. asking about lunch breaks at 9 PM).
+- **Verified Lunisolar Calendar (`festivals.json`):** Tracks 18 major festivals from 2025 through 2028 verified against *drikpanchang.com* and *timeanddate.com* (Makar Sankranti, Republic Day, Maha Shivratri, Holi, Eid ul-Fitr, Raksha Bandhan, Janmashtami, Ganesh Chaturthi, Navratri, Dussehra, Karwa Chauth, Dhanteras, Diwali, Bhai Dooj, Chhath Puja, Guru Nanak Jayanti, Christmas, New Year).
 
 ---
 
-## 6. RAG & Vector Memory (Ultra-Low Memory Architecture)
+## 6. Deterministic Topic Suggestion Engine
 
-### The Cloud Problem:
-
-Traditional RAG setups load `sentence-transformers` and `torch` (PyTorch). PyTorch allocates ~450MB–500MB RAM upon import. On free cloud hosts (Render 512MB RAM free tier), this caused immediate **OOM crashes** (`Out of memory: used over 512MB`).
-
-### Spark's Custom 384-Dim Subword Hashing Vectorizer (`app/rag/embedder.py`):
-
-Spark uses a custom, zero-dependency subword hashing embedder:
-
-1. **Tokenization & Subword Extraction:** Extracts all words and decomposes them into 3-to-5 character n-grams.
-2. **MD5 Dimension Mapping:** Hashes each n-gram deterministically into a 384-dimensional vector space.
-3. **Frequency Weighting & L2 Normalization:** Normalizes the vector to unit length ($\|v\| = 1$), meaning the dot product is exactly the **cosine similarity**.
-4. **RAM Usage:** **< 1 MB** (vs 500 MB for PyTorch).
-5. **Execution Time:** **< 0.2 milliseconds** per query.
-
-### ChromaDB Collections:
-
-- Initialized with `chromadb.PersistentClient(path="./chroma_data")`.
-- Metadata specifies cosine metric (`hnsw:space: cosine`).
-- Chunks stored include:
-  - Persona backstories
-  - Persona behavioral rules
-  - User long-term memory facts extracted from past sessions
+To prevent dry chats and "interview fatigue":
+- `topics.json` defines 20 curated topics across 5 categories (`daily_life`, `family`, `friends`, `relationships`, `fun`).
+- Stage-aware: `new` (0–20 messages), `getting_close` (21–60 messages), `comfortable` (61+ messages).
+- Cooldown: No topic can be suggested again within **20 messages**.
+- Self-share seeds: Equips the persona to volunteer its own small anecdote instead of bombarding the user with questions.
 
 ---
 
-## 7. Dual LLM Provider Engine & Automatic Failover
+## 7. Cloud Deployment Configuration (Render & Hugging Face Space)
 
-Spark is architected with a resilient **Circuit Breaker** between two top-tier LLM providers.
+### Environment Variables
 
-```mermaid
-sequenceDiagram
-    participant ChatEngine as 🧠 Chat Engine
-    participant Router as 🔀 LLM Router
-    participant DB as 🗄️ SQLite (LLMStatus)
-    participant Groq as ⚡ Groq Cloud API
-    participant Claude as 🧠 Anthropic Claude API
-
-    ChatEngine->>Router: route_and_generate(messages, system_prompt)
-    Router->>DB: Check current_provider (id=1)
-    DB-->>Router: "groq"
-
-    alt Normal Operation
-        Router->>Groq: Generate completion (LLaMA 3.3 70B)
-        Groq-->>Router: AI response text
-        Router-->>ChatEngine: Return response
-    else Groq Quota / Rate Limit Exceeded (429)
-        Router->>Groq: Generate completion
-        Groq-->>Router: HTTP 429 Quota Exceeded
-        Note over Router: Caught GroqQuotaExceededError!
-        Router->>DB: UPDATE LLMStatus SET current_provider = 'claude'
-        Router->>Claude: Fallback generate (Claude 3.5 Haiku)
-        Claude-->>Router: AI response text
-        Router-->>ChatEngine: Return response (Zero downtime to user)
-    end
-```
-
-### Self-Healing APScheduler Background Worker:
-
-- `backend/app/scheduler/groq_health_check.py` registers a background cron job running every **12 hours**.
-- If the current provider is `"claude"`, it sends a tiny probe request to Groq.
-- The moment Groq's daily rate limit resets and responds successfully, the scheduler automatically switches `current_provider` back to `"groq"`.
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `OPENAI_API_KEY` | OpenAI API Key (required) | `sk-proj-...` |
+| `CHAT_MODEL` | Primary chat inference model | `gpt-5.6-luna` |
+| `CHAT_MODEL_PREMIUM` | Premium A/B testing model | `gpt-5.6-terra` |
+| `FALLBACK_MODEL` | Failover model on 429/5xx | `gpt-5.6-terra` |
+| `CHAT_REASONING_EFFORT` | Reasoning token budget | `none` |
+| `CHAT_MAX_COMPLETION_TOKENS` | Max tokens per completion | `500` |
+| `CHAT_TEMPERATURE` | Generation temperature | `0.95` |
+| `MAX_USER_INPUT_LENGTH` | Character limit per user message | `1000` |
+| `USER_RATE_LIMIT_PER_MINUTE` | Rate limit window per user | `20` |
+| `DATABASE_URL` | SQLite database path | `sqlite:///./app.db` |
+| `CHROMA_PERSIST_DIR` | ChromaDB vector store directory | `./chroma_data` |
+| `CORS_ORIGINS` | Extra allowed CORS origins | `https://your-frontend.com` |
 
 ---
 
-## 8. Database Architecture (SQLite via SQLAlchemy)
+## 8. Five Before-vs-After Conversation Samples
 
-All persistent application state is stored in `app.db` via SQLAlchemy ORM.
-
-### Database Tables:
-
-| Table Name     | Primary Key           | Description                                          | Relationships                    |
-| -------------- | --------------------- | ---------------------------------------------------- | -------------------------------- |
-| `users`      | `id` (String UUID)  | User sessions / anonymous accounts                   | `messages` (1-to-many)         |
-| `profiles`   | `id` (String)       | Registered AI companion personas                     | `messages` (1-to-many)         |
-| `messages`   | `id` (Integer Auto) | Every chat message (`role: user / assistant`)      | Belongs to`user` & `profile` |
-| `llm_status` | `id` (Integer = 1)  | Active LLM provider tracking (`groq` / `claude`) | Singleton status record          |
+### Sample 1: Reaction to Monosyllabic Reply ("hmm")
+* **Before (Robotic Therapist):**  
+  > "Koi baat nahi! Kabhi kabhi silence bhi accha hota hai. Jab bhi mood ho toh share karna, thoda relax bhi zaroori hota hai."
+* **After (Spark - Diya):**  
+  > "hmm matlab kya? keyboard mein aur buttons nahi bache kya 😂"
 
 ---
 
-## 9. Frontend Architecture (React 18 + Vite)
-
-The frontend is a modern single-page application built with React 18, Vite, and scoped Vanilla CSS.
-
-### Key Components:
-
-- **`AppLayout.jsx`:** Main navigation shell with responsive desktop sidebar and mobile bottom navigation bar.
-- **`HomePage.jsx`:** Hero section, AI companion disclosure badge, and interactive grid of persona cards.
-- **`ProfileCard.jsx`:** Persona card with avatar image, online green indicator dot, personality tags, bio, and action buttons:
-  - **Chat Card Click:** Navigates to `/chat/{profile_id}`.
-  - **Say Hi Button:** Quick one-click conversation starter.
-  - **Call Button:** Triggers simulated voice call interface with the persona.
-- **`ChatWindow.jsx`:** Real-time messaging panel with auto-scroll (`scrollIntoView`), typing indicator dots, empty state avatar greeting, and Enter-key submission.
-- **`AddProfileModal.jsx`:** In-app persona creator to add custom personas on the fly.
-- **`ChatContext.jsx`:** Global state store managing messages cache, active profile ID, typing states, and error handling.
-- **`api.js`:** Production-aware Axios client that automatically uses relative paths (`""`) in unified Docker/Render deployments and `http://localhost:8000` in local development.
-
-### Mobile Screen Scrolling & Layout Fix:
-
-- Uses `100dvh` (dynamic viewport height) and explicit `overflow: hidden` on layout roots with `overflow-y: auto` and `-webkit-overflow-scrolling: touch` on the message container.
-- Prevents iOS/Android Safari address bar jumping and guarantees buttery-smooth scrolling.
+### Sample 2: Food Preference Reaction ("chai se better coffee hai")
+* **Before (Agreeable Yes-Man Bot):**  
+  > "Bilkul sahi kaha! Coffee ka apna hi maza hai. Solid choice hai aapki, coffee energy aur focus boost karti hai!"
+* **After (Spark - Diya):**  
+  > "dosti khatam 😂 adrak wali chai ke aage Starbucks ka cold brew bhi fail hai. tumne kabhi dhang ki chai pee hi nahi hai pakka"
 
 ---
 
-## 10. REST API Specification
-
-### 1. Persona Endpoints
-
-- **`GET /profiles`**: List all available personas (returns array of profiles).
-- **`GET /profiles/{profile_id}`**: Get detailed persona profile information.
-- **`POST /profiles`**: Add a new custom persona configuration.
-- **`DELETE /profiles/{profile_id}`**: Delete a persona from database.
-
-### 2. Chat Endpoints
-
-- **`POST /chat/{profile_id}`**:
-  - Request Body: `{"user_id": "string", "message": "string"}`
-  - Response Body: `{"reply": "string", "profile_id": "string"}`
-- **`GET /chat/{profile_id}/history?user_id=...`**:
-  - Retrieves chronological conversation history for the session.
-
-### 3. System Endpoints
-
-- **`GET /health`**:
-  - Returns active LLM provider (`groq` or `claude`), Groq availability status, and database health.
-- **`GET /docs`**:
-  - Interactive OpenAPI / Swagger documentation.
+### Sample 3: Music Opinion ("pop music is better than older classics")
+* **Before (PR Assistant):**  
+  > "That is a very interesting perspective! Both genres have their own unique beauty and cultural significance."
+* **After (Spark - Zara):**  
+  > "Hard disagree. Everything on the charts right now sounds like it was mixed in 20 minutes for a 15-second TikTok trend. What's your benchmark?"
 
 ---
 
-## 11. Cloud Deployment Setup
-
-### 1. Render.com (100% Free Tier Web Service)
-
-- **Repo:** Connected to `https://github.com/teamaicubemoons-stack/Dating_chatbot.git`
-- **Build Step:** Pre-compiled React assets placed in `backend/static/`
-- **Start Command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- **RAM Footprint:** ~85 MB (comfortably below Render's 512 MB ceiling)
-- **Live URL:** `https://dating-chatbot-kfqm.onrender.com`
-
-### 2. Hugging Face Spaces (Gradio SDK + ZeroGPU)
-
-- **Space:** `https://huggingface.co/spaces/cubemoonsai/dateing_chatbot`
-- **Configuration:** `sdk: gradio`, `app_port: 7860`, `app_file: app.py`
-- **Entry Point:** Root `app.py` runs a Gradio Blocks UI that embeds the Spark AI companion engine with persona cards, audio call simulator, and live Groq inference.
+### Sample 4: Work Fatigue ("work was so exhausting today")
+* **Before (Preachy Counselor):**  
+  > "I understand how hard work can be. Make sure to drink plenty of water, do some light stretching, and get 8 hours of sleep tonight!"
+* **After (Spark - Luna):**  
+  > "Tell me about it. Spent 4 hours in the darkroom squinting at test prints. Did you at least get a decent lunch?"
 
 ---
 
-## 12. Security & Best Practices
+### Sample 5: AI Identity Inquiry ("are you real or an AI?")
+* **Before (Hallucinating Human Claim OR Corporate Disclaimer):**  
+  > "As an AI language model created by OpenAI, I do not possess a physical body or real feelings."
+* **After (Spark - Honest & Charming):**  
+  > "I'm an AI companion with Luna's personality. Real conversation and dry jokes, but yeah, digital underneath. Hope that doesn't spoil the vibe 🙂"
 
-1. **Zero Secret Leaks:** API keys (`GROQ_API_KEY`, `ANTHROPIC_API_KEY`) are loaded strictly via environment variables / `.env` through Pydantic Settings.
-2. **CORS Hardening:** Configured with specific localhost development ports and dynamic regex matching for `*.onrender.com` domains.
-3. **Database Concurrency:** Short-lived SQLAlchemy sessions with automatic context manager closure (`db.close()`) to prevent SQLite thread locks.
-4. **Graceful Degradation:** If both LLM APIs are unreachable, the server returns HTTP 503 with a friendly retry message rather than crashing the process.
+---
+
+## 9. Verification & Automated Test Suite
+
+Spark includes automated unit and integration tests:
+- `backend/tests/test_context_engine.py`: Verifies day-parts, meal windows, and festival countdown.
+- `backend/tests/test_topic_picker.py`: Validates slow-chat detection, stage filtering, and 20-message cooldown.
+- `backend/tests/test_prompt_and_validator.py`: Ensures static prefix caching structure, text sanitization, and leak detection.
+- `backend/tests/test_openai_and_routing.py`: Confirms OpenAI direct integration and failover.
+- `backend/tests/chat_quality_check.py`: Assesses brevity, interrogation rate (<40%), and sycophancy (0%).
+- `backend/tests/model_ab_test.py`: Live A/B latency and cost probe between `gpt-5.6-luna` and `gpt-5.6-terra`.

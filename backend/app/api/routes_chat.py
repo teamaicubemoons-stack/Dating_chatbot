@@ -18,11 +18,14 @@ from datetime import timezone
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 
-from app.chat.chat_engine import process_chat_message
+from app.chat.chat_engine import process_chat_message, process_nudge_message
 from app.chat.typing_delay import calculate_typing_delay
 from app.config.settings import settings
 from app.memory.memory_store import get_full_history
-from app.models.schemas import ChatRequest, ChatResponse, ConversationHistoryResponse, MessageOut
+from app.models.schemas import (
+    ChatRequest, ChatResponse, ConversationHistoryResponse, MessageOut,
+    NudgeRequest, NudgeResponse,
+)
 from app.utils.error_handler import PersonaNotFoundError, LLMClientError
 from app.api.dependencies import get_db
 
@@ -81,6 +84,49 @@ async def send_message(
     except Exception as exc:
         logger.exception("Unexpected error in chat endpoint: %s", exc)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+
+@router.post("/{profile_id}/nudge", response_model=NudgeResponse)
+async def nudge_user(
+    profile_id: str,
+    body: NudgeRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Check if the user has been idle for 3-4 minutes without ending the conversation.
+    If eligible, generates and persists exactly ONE proactive check-in message.
+    """
+    try:
+        min_idle = body.min_idle_seconds if body.min_idle_seconds is not None else 180
+        reply, reason = await process_nudge_message(
+            db=db,
+            profile_id=profile_id,
+            user_id=body.user_id,
+            min_idle_seconds=min_idle,
+        )
+        if reply:
+            return NudgeResponse(
+                profile_id=profile_id,
+                reply=reply,
+                nudged=True,
+                reason="success",
+            )
+        return NudgeResponse(
+            profile_id=profile_id,
+            reply=None,
+            nudged=False,
+            reason=reason,
+        )
+    except PersonaNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Profile '{profile_id}' not found")
+    except Exception as exc:
+        logger.exception("Error in nudge endpoint: %s", exc)
+        return NudgeResponse(
+            profile_id=profile_id,
+            reply=None,
+            nudged=False,
+            reason="error",
+        )
 
 
 @router.get("/{profile_id}/history", response_model=ConversationHistoryResponse)

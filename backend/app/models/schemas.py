@@ -103,6 +103,20 @@ class ChatResponse(BaseModel):
     profile_id: str
 
 
+class NudgeRequest(BaseModel):
+    """Body for POST /chat/{profile_id}/nudge."""
+    user_id: str = Field(..., description="User ID to check inactivity and send nudge for")
+    min_idle_seconds: Optional[int] = Field(180, description="Minimum seconds of inactivity required to trigger nudge")
+
+
+class NudgeResponse(BaseModel):
+    """Response returned by inactivity check / nudge endpoint."""
+    profile_id: str
+    reply: Optional[str] = None
+    nudged: bool = False
+    reason: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Message history schemas
 # ---------------------------------------------------------------------------

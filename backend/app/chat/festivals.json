@@ -1,0 +1,201 @@
+{
+  "_meta": {
+    "description": "Indian festival calendar 2025-2028 for Spark chatbot context engine.",
+    "sources": [
+      "Primary: drikpanchang.com (lunisolar computation)",
+      "Secondary: timeanddate.com / testbook.com (cross-verified)"
+    ],
+    "note": "Dates are for India (IST). Some festivals span multiple days; the main puja/celebration day is listed. Regional variants exist.",
+    "last_verified": "2026-10-23"
+  },
+  "festivals": [
+    {
+      "id": "navratri_sharad",
+      "name": "Navratri (Sharad)",
+      "topic_hint": "garba, dandiya, navratri outfits, nine-day fasting food, the nine colours, best dandiya moments",
+      "dates": [
+        {"year": 2025, "start": "2025-10-02", "end": "2025-10-11"},
+        {"year": 2026, "start": "2026-10-20", "end": "2026-10-29"},
+        {"year": 2027, "start": "2027-10-09", "end": "2027-10-18"},
+        {"year": 2028, "start": "2028-09-28", "end": "2028-10-07"}
+      ]
+    },
+    {
+      "id": "dussehra",
+      "name": "Dussehra / Vijaya Dashami",
+      "topic_hint": "Raavan dahan, mela, family outing for dussehra, holiday mood after Navratri",
+      "dates": [
+        {"year": 2025, "date": "2025-10-12"},
+        {"year": 2026, "date": "2026-10-30"},
+        {"year": 2027, "date": "2027-10-19"},
+        {"year": 2028, "date": "2028-10-08"}
+      ]
+    },
+    {
+      "id": "dhanteras",
+      "name": "Dhanteras",
+      "topic_hint": "Dhanteras shopping — gold, silver, utensils, lights, Diwali prep in full swing",
+      "dates": [
+        {"year": 2025, "date": "2025-10-20"},
+        {"year": 2026, "date": "2026-11-06"},
+        {"year": 2027, "date": "2027-10-26"},
+        {"year": 2028, "date": "2028-10-14"}
+      ]
+    },
+    {
+      "id": "diwali",
+      "name": "Diwali",
+      "topic_hint": "ghar ki safai, rangoli, diyas, mithai, gifts, patakhe vs no-patakhe, family time, new clothes, bonus, bonus shopping",
+      "dates": [
+        {"year": 2025, "date": "2025-10-21"},
+        {"year": 2026, "date": "2026-11-08"},
+        {"year": 2027, "date": "2027-10-29"},
+        {"year": 2028, "date": "2028-10-17"}
+      ]
+    },
+    {
+      "id": "bhai_dooj",
+      "name": "Bhai Dooj",
+      "topic_hint": "siblings bond, bhai dooj tilak, gifts for brother/sister, who gets more gifts in family",
+      "dates": [
+        {"year": 2025, "date": "2025-10-23"},
+        {"year": 2026, "date": "2026-11-10"},
+        {"year": 2027, "date": "2027-10-31"},
+        {"year": 2028, "date": "2028-10-19"}
+      ]
+    },
+    {
+      "id": "chhath",
+      "name": "Chhath Puja",
+      "topic_hint": "Chhath puja, arghya at river/pond, fasting for 36 hours, family gathering, UP/Bihar vibe",
+      "dates": [
+        {"year": 2025, "start": "2025-10-26", "end": "2025-10-29"},
+        {"year": 2026, "start": "2026-11-14", "end": "2026-11-17"},
+        {"year": 2027, "start": "2027-11-03", "end": "2027-11-06"},
+        {"year": 2028, "start": "2028-10-22", "end": "2028-10-25"}
+      ]
+    },
+    {
+      "id": "christmas",
+      "name": "Christmas",
+      "topic_hint": "Christmas tree, secret santa, cakes, church midnight mass, Christmas vibes in December",
+      "dates": [
+        {"year": 2025, "date": "2025-12-25"},
+        {"year": 2026, "date": "2026-12-25"},
+        {"year": 2027, "date": "2027-12-25"},
+        {"year": 2028, "date": "2028-12-25"}
+      ]
+    },
+    {
+      "id": "new_year",
+      "name": "New Year's Eve / New Year",
+      "topic_hint": "New Year plans, countdown party, resolutions (do they actually keep them?), where to celebrate",
+      "dates": [
+        {"year": 2025, "date": "2025-12-31"},
+        {"year": 2026, "date": "2026-12-31"},
+        {"year": 2027, "date": "2027-12-31"},
+        {"year": 2028, "date": "2028-12-31"}
+      ]
+    },
+    {
+      "id": "makar_sankranti",
+      "name": "Makar Sankranti / Lohri / Pongal",
+      "topic_hint": "Kite flying, til-gur ke ladoo, Lohri bonfire, Pongal sweet rice, harvest festival vibes",
+      "dates": [
+        {"year": 2026, "date": "2026-01-14"},
+        {"year": 2027, "date": "2027-01-14"},
+        {"year": 2028, "date": "2028-01-15"}
+      ]
+    },
+    {
+      "id": "valentine",
+      "name": "Valentine's Day",
+      "topic_hint": "Valentine plans, gift ideas, single awareness day humor, crush stories, first date ideas",
+      "dates": [
+        {"year": 2026, "date": "2026-02-14"},
+        {"year": 2027, "date": "2027-02-14"},
+        {"year": 2028, "date": "2028-02-14"}
+      ]
+    },
+    {
+      "id": "holi",
+      "name": "Holi",
+      "topic_hint": "colours, bhang, thandai, water guns, favourite holi memory, ruined clothes, best holi moment",
+      "dates": [
+        {"year": 2026, "date": "2026-03-04"},
+        {"year": 2027, "date": "2027-03-22"},
+        {"year": 2028, "date": "2028-03-11"}
+      ]
+    },
+    {
+      "id": "eid_ul_fitr",
+      "name": "Eid ul-Fitr",
+      "topic_hint": "Eid mubarak, seviyaan, biryani, new clothes, Eid namaz, chaand raat shopping",
+      "dates": [
+        {"year": 2026, "date": "2026-03-21"},
+        {"year": 2027, "date": "2027-03-11"},
+        {"year": 2028, "date": "2028-02-29"}
+      ]
+    },
+    {
+      "id": "raksha_bandhan",
+      "name": "Raksha Bandhan",
+      "topic_hint": "sibling bond, rakhi, mithai, gifts, brother-sister jokes, long distance rakhi",
+      "dates": [
+        {"year": 2026, "date": "2026-08-18"},
+        {"year": 2027, "date": "2027-08-07"},
+        {"year": 2028, "date": "2028-08-26"}
+      ]
+    },
+    {
+      "id": "ganesh_chaturthi",
+      "name": "Ganesh Chaturthi",
+      "topic_hindi": "ganpati bappa morya, modak, pandal hopping, visarjan, 10 days of festivity",
+      "dates": [
+        {"year": 2026, "date": "2026-08-26"},
+        {"year": 2027, "date": "2027-09-14"},
+        {"year": 2028, "date": "2028-09-02"}
+      ]
+    },
+    {
+      "id": "karwa_chauth",
+      "name": "Karwa Chauth",
+      "topic_hint": "karwa chauth fast, moonrise wait, sargi thali, women dressed up, romantic vibe",
+      "dates": [
+        {"year": 2026, "date": "2026-10-13"},
+        {"year": 2027, "date": "2027-10-02"},
+        {"year": 2028, "date": "2028-10-21"}
+      ]
+    },
+    {
+      "id": "ipl_season",
+      "name": "IPL Season",
+      "topic_hint": "IPL match, favourite team, which match tonight, best catches, MS Dhoni retirement talk, who will win IPL",
+      "dates": [
+        {"year": 2026, "start": "2026-03-20", "end": "2026-05-25"},
+        {"year": 2027, "start": "2027-03-25", "end": "2027-05-30"},
+        {"year": 2028, "start": "2028-03-22", "end": "2028-05-28"}
+      ]
+    },
+    {
+      "id": "board_exam_season",
+      "name": "Board Exam Season",
+      "topic_hint": "board exams, 10th/12th results, pressure from parents, night studying, exam stress",
+      "dates": [
+        {"year": 2026, "start": "2026-02-15", "end": "2026-04-15"},
+        {"year": 2027, "start": "2027-02-15", "end": "2027-04-15"},
+        {"year": 2028, "start": "2028-02-15", "end": "2028-04-15"}
+      ]
+    },
+    {
+      "id": "independence_day",
+      "name": "Independence Day",
+      "topic_hint": "Happy 15th August, flag hoisting, patriotic vibes, holiday plans",
+      "dates": [
+        {"year": 2026, "date": "2026-08-15"},
+        {"year": 2027, "date": "2027-08-15"},
+        {"year": 2028, "date": "2028-08-15"}
+      ]
+    }
+  ]
+}

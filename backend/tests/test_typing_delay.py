@@ -71,3 +71,28 @@ def test_settings_enable_typing_delay_flag():
     """Settings flag enable_typing_delay is loaded and defaults to True."""
     assert hasattr(settings, "enable_typing_delay")
     assert settings.enable_typing_delay is True
+
+
+def test_calculate_read_delay():
+    """calculate_read_delay calculates realistic human reading duration before typing starts."""
+    from app.chat.typing_delay import calculate_read_delay
+
+    # Empty / whitespace
+    assert 0.5 <= calculate_read_delay("") <= 1.0
+    assert 0.5 <= calculate_read_delay(None) <= 1.0
+
+    # Short message (1-4 words): 0.8s - 1.5s
+    short_delays = [calculate_read_delay("kaise ho?") for _ in range(20)]
+    for d in short_delays:
+        assert 0.7 <= d <= 1.5, f"Short delay {d} outside expected bracket"
+
+    # Medium message (5-12 words): 1.1s - 2.0s
+    med_delays = [calculate_read_delay("aaj ka din kaisa raha tumhara office me?") for _ in range(20)]
+    for d in med_delays:
+        assert 1.0 <= d <= 2.1, f"Medium delay {d} outside expected bracket"
+
+    # Long message: bounded to max 2.8s
+    long_delays = [calculate_read_delay("maine notice kiya ki tum bohot din se busy lag rahe ho aur chat pe nahi aa rahe ho") for _ in range(20)]
+    for d in long_delays:
+        assert 1.4 <= d <= 2.8, f"Long delay {d} outside expected bracket"
+

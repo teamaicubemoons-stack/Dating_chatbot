@@ -122,6 +122,14 @@ export const clearChatConversation = async (profileId, userId) => {
   return data;
 };
 
+export const nudgeUser = async (profileId, userId, minIdleSeconds = 180) => {
+  const { data } = await apiClient.post(`/chat/${profileId}/nudge`, {
+    user_id: userId,
+    min_idle_seconds: minIdleSeconds,
+  });
+  return data;
+};
+
 
 // ============================================================
 // Memory & Privacy API calls
