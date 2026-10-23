@@ -34,7 +34,7 @@ def test_time_context_generation():
     assert "local_time" in ctx
     assert "day_period" in ctx
     assert ctx["timezone"] == "Asia/Kolkata"
-    assert ctx["day_period"] in ("morning", "afternoon", "evening", "night")
+    assert ctx["day_period"] in ("morning", "late morning", "afternoon", "evening", "night")
     assert "verified_event_context" in ctx
 
 

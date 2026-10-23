@@ -239,7 +239,12 @@ export default function AppSidebar({
                       {lastMsg ? (
                         <span>
                           {lastMsg.role === 'user' ? 'You: ' : ''}
-                          {lastMsg.content}
+                          {(() => {
+                            const raw = lastMsg.content || '';
+                            const parts = raw.split('|||').map((s) => s.trim()).filter(Boolean);
+                            const lastBubble = parts.length > 0 ? parts[parts.length - 1] : raw;
+                            return lastBubble.replace(/\|\|\|/g, '').trim();
+                          })()}
                         </span>
                       ) : (
                         <span className="thread-item__bio-preview">{p.short_bio}</span>

@@ -295,11 +295,11 @@ def test_13_validator_factual_safety_guard():
     # When Diya hallucinates medical college without acknowledging mistake
     hallucinated = "Main Rajiv Institute of Medical Sciences mein padhti hoon."
     cleaned = validate_and_clean_response(hallucinated, persona_name="Diya")
-    assert "design college" in cleaned.lower()
+    assert "mass comm" in cleaned.lower()
     assert "Rajiv Institute" not in cleaned
 
     # When Diya acknowledges the error legitimately, it should not be rewritten
-    admitted = "Haha sahi pakda 😅 main medical nahi, design college mein hoon. Confuse ho gayi thi!"
+    admitted = "Haha sahi pakda 😅 main medical nahi, Mass Comm padh rahi hoon. Confuse ho gayi thi!"
     cleaned_valid = validate_and_clean_response(admitted, persona_name="Diya")
     assert "sahi pakda" in cleaned_valid
 
@@ -308,7 +308,7 @@ def test_profile_privacy_does_not_leak_configuration_language():
     from app.chat.prompt_builder import build_direct_prompt
 
     prompt, _ = build_direct_prompt(
-        {"name": "Diya", "city": "Raipur", "short_bio": "Design student"},
+        {"name": "Diya", "city": "Raipur", "short_bio": "Mass Communication student"},
         [],
         "Have you ever been to Delhi?",
     )

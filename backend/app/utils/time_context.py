@@ -24,8 +24,10 @@ def get_current_context(timezone_str: str = "Asia/Kolkata") -> Dict[str, Any]:
     now = datetime.now(tz)
 
     hour = now.hour
-    if 5 <= hour < 12:
+    if 5 <= hour < 10:
         day_period = "morning"
+    elif 10 <= hour < 12:
+        day_period = "late morning"
     elif 12 <= hour < 17:
         day_period = "afternoon"
     elif 17 <= hour < 21:
@@ -51,8 +53,9 @@ def _get_verified_event_context(current_date: date) -> Dict[str, Any]:
     # rather than guessed, and callers can still use the user's own context.
     calendars = {
         2026: {
-            "navratri": (date(2026, 10, 11), date(2026, 10, 20)),
+            "navratri": (date(2026, 10, 11), date(2026, 10, 19)),
             "dussehra": (date(2026, 10, 20), date(2026, 10, 20)),
+            "dhanteras": (date(2026, 11, 6), date(2026, 11, 6)),
             "diwali": (date(2026, 11, 8), date(2026, 11, 8)),
         }
     }

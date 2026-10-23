@@ -21,12 +21,24 @@ from app.chat.context_engine import (
 def test_day_parts():
     assert _get_day_part(4) == "early morning"
     assert _get_day_part(6) == "morning"
-    assert _get_day_part(9) == "late morning"
-    assert _get_day_part(11) == "noon"
+    assert _get_day_part(9) == "morning"
+    assert _get_day_part(10) == "late morning"
+    assert _get_day_part(11) == "late morning"
     assert _get_day_part(13) == "afternoon"
-    assert _get_day_part(16) == "evening"
-    assert _get_day_part(19) == "night"
-    assert _get_day_part(22) == "late night"
+    assert _get_day_part(18) == "evening"
+    assert _get_day_part(21) == "night"
+    assert _get_day_part(24) == "late night"
+
+
+def test_festival_ended_in_last_7_days():
+    # 2026-10-23: Navratri ended 2026-10-19 (4 days ago), Dussehra 2026-10-20 (3 days ago)
+    ctx = _compute_festival_context(date(2026, 10, 23))
+    assert "ended" in ctx
+    assert "day(s) ago" in ctx
+    assert "Topic hint" in ctx
+    # Ensure at most 2 items are returned
+    lines = [l for l in ctx.strip().split("\n") if l.startswith("•")]
+    assert len(lines) <= 2
 
 
 def test_meal_windows():

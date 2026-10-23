@@ -14,10 +14,10 @@
       "name": "Navratri (Sharad)",
       "topic_hint": "garba, dandiya, navratri outfits, nine-day fasting food, the nine colours, best dandiya moments",
       "dates": [
-        {"year": 2025, "start": "2025-10-02", "end": "2025-10-11"},
-        {"year": 2026, "start": "2026-10-20", "end": "2026-10-29"},
-        {"year": 2027, "start": "2027-10-09", "end": "2027-10-18"},
-        {"year": 2028, "start": "2028-09-28", "end": "2028-10-07"}
+        {"year": 2025, "start": "2025-09-23", "end": "2025-10-01"},
+        {"year": 2026, "start": "2026-10-11", "end": "2026-10-19"},
+        {"year": 2027, "start": "2027-09-30", "end": "2027-10-08"},
+        {"year": 2028, "start": "2028-09-18", "end": "2028-09-26"}
       ]
     },
     {
@@ -25,10 +25,10 @@
       "name": "Dussehra / Vijaya Dashami",
       "topic_hint": "Raavan dahan, mela, family outing for dussehra, holiday mood after Navratri",
       "dates": [
-        {"year": 2025, "date": "2025-10-12"},
-        {"year": 2026, "date": "2026-10-30"},
-        {"year": 2027, "date": "2027-10-19"},
-        {"year": 2028, "date": "2028-10-08"}
+        {"year": 2025, "date": "2025-10-02"},
+        {"year": 2026, "date": "2026-10-20"},
+        {"year": 2027, "date": "2027-10-09"},
+        {"year": 2028, "date": "2028-09-27"}
       ]
     },
     {
@@ -36,10 +36,10 @@
       "name": "Dhanteras",
       "topic_hint": "Dhanteras shopping — gold, silver, utensils, lights, Diwali prep in full swing",
       "dates": [
-        {"year": 2025, "date": "2025-10-20"},
+        {"year": 2025, "date": "2025-10-18"},
         {"year": 2026, "date": "2026-11-06"},
-        {"year": 2027, "date": "2027-10-26"},
-        {"year": 2028, "date": "2028-10-14"}
+        {"year": 2027, "date": "2027-10-27"},
+        {"year": 2028, "date": "2028-10-15"}
       ]
     },
     {
@@ -47,7 +47,7 @@
       "name": "Diwali",
       "topic_hint": "ghar ki safai, rangoli, diyas, mithai, gifts, patakhe vs no-patakhe, family time, new clothes, bonus, bonus shopping",
       "dates": [
-        {"year": 2025, "date": "2025-10-21"},
+        {"year": 2025, "date": "2025-10-20"},
         {"year": 2026, "date": "2026-11-08"},
         {"year": 2027, "date": "2027-10-29"},
         {"year": 2028, "date": "2028-10-17"}
@@ -58,7 +58,7 @@
       "name": "Bhai Dooj",
       "topic_hint": "siblings bond, bhai dooj tilak, gifts for brother/sister, who gets more gifts in family",
       "dates": [
-        {"year": 2025, "date": "2025-10-23"},
+        {"year": 2025, "date": "2025-10-22"},
         {"year": 2026, "date": "2026-11-10"},
         {"year": 2027, "date": "2027-10-31"},
         {"year": 2028, "date": "2028-10-19"}
@@ -69,8 +69,8 @@
       "name": "Chhath Puja",
       "topic_hint": "Chhath puja, arghya at river/pond, fasting for 36 hours, family gathering, UP/Bihar vibe",
       "dates": [
-        {"year": 2025, "start": "2025-10-26", "end": "2025-10-29"},
-        {"year": 2026, "start": "2026-11-14", "end": "2026-11-17"},
+        {"year": 2025, "start": "2025-10-25", "end": "2025-10-28"},
+        {"year": 2026, "start": "2026-11-13", "end": "2026-11-16"},
         {"year": 2027, "start": "2027-11-03", "end": "2027-11-06"},
         {"year": 2028, "start": "2028-10-22", "end": "2028-10-25"}
       ]

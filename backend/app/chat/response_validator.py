@@ -13,7 +13,7 @@ Follows Section 11 of the Master Implementation Plan:
 
 import logging
 import re
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,300 @@ _DISTRESS_KEYWORDS = re.compile(
 _EMOJI_REGEX = re.compile(r"[\U00010000-\U0010ffff]")
 _LAUGHING_OR_FLIRTY_EMOJIS = re.compile(r"[😂😅😄😆🤣😜😏😉🔥👀💃✨]")
 
+# Devanagari character range: U+0900 to U+097F
+_DEVANAGARI_REGEX = re.compile(r"[\u0900-\u097F]")
+
+_DEV_MAP = {
+    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
+    'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au',
+    'ा': 'a', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
+    'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
+    'ं': 'n', 'ँ': 'n', 'ः': 'h', 'ॉ': 'o',
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v',
+    'श': 'sh', 'ष': 'sh', 'स': 's', 'ह': 'h',
+    'क्ष': 'ksh', 'त्र': 'tr', 'ज्ञ': 'gy',
+    'क़': 'q', 'ख़': 'kh', 'ग़': 'gh', 'ज़': 'z', 'ड़': 'r', 'ढ़': 'rh', 'फ़': 'f',
+    '।': '.', '॥': '.'
+}
+_DEV_MATRAS = set('ािीुूृेैोौंँःॉ्')
+_DEV_CONSONANTS = set('कखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसहक्षत्रज्ञक़ख़ग़ज़ड़ढ़फ़')
+
+_COMMON_DEV_WORDS = {
+    'क्या': 'kya', 'हाँ': 'haan', 'हां': 'haan', 'नहीं': 'nahi', 'नही': 'nahi',
+    'तुम': 'tum', 'आप': 'tum', 'कैसा': 'kaisa', 'कैसी': 'kaisi', 'कैसे': 'kaise',
+    'हो': 'ho', 'है': 'hai', 'हैं': 'hain', 'अरे': 'arey', 'यार': 'yaar',
+    'सच': 'sach', 'में': 'me', 'कहा': 'kaha', 'गए': 'gaye', 'गई': 'gayi',
+    'थी': 'thi', 'था': 'tha', 'थे': 'the', 'कुछ': 'kuch', 'बात': 'baat',
+    'करो': 'karo', 'करना': 'karna', 'रहा': 'raha', 'रही': 'rahi', 'रहे': 'rahe',
+    'बोलो': 'bolo', 'बोल': 'bol', 'तो': 'toh', 'पर': 'par',
+    'और': 'aur', 'का': 'ka', 'की': 'ki', 'के': 'ke', 'से': 'se', 'को': 'ko'
+}
+
+# Self-referential internal leak patterns: Whole-word, case-aware patterns where bot
+# talks about its own internal system/settings/calendar/prompt/tone.
+# Never flags honest answers to 'are you an AI?'
+_SELF_REFERENTIAL_LEAK_PATTERNS = [
+    re.compile(r"\b(?:mera|meri|my|humara|our)\s+(?:calendar|system|settings?|prompt|internal\s+clock|training|algorithm|dataset)\b", re.I),
+    re.compile(r"\b(?:calendar|system|settings?)\s+(?:setting\s+fail|me\s+gadbad|fail\s+ho|glitch|error|mix\s+ho\s+gayi|kharab\s+ho\s+gayi)\b", re.I),
+    re.compile(r"\bdate\s+mix\s+ho\s+gayi\b", re.I),
+    re.compile(r"\bcalendar\s+setting\s+fail\b", re.I),
+    re.compile(r"\bmera\s+calendar\b", re.I),
+    re.compile(r"\b(?:aage\s+se\s+|ab\s+se\s+|ab\s+)?(?:respectfully|respect\s+se)\s+baat\s+karungi\b", re.I),
+    re.compile(r"\b(?:aage\s+se\s+|ab\s+se\s+|ab\s+)?(?:respectfully|respect\s+se)\s+baat\s+karunga\b", re.I),
+    re.compile(r"\bmeri\s+tone\s+(?:kharab|thodi\s+zyada|theek\s+nahi|badal|change)\b", re.I),
+    re.compile(r"\bmaine\s+apni\s+tone\s+change\s+kar\s+di\b", re.I),
+    re.compile(r"\btone\s+theek\s+kar\s+rahi\s+hu\b", re.I),
+    re.compile(r"\b(?:mere|mera|meri|as\s+per\s+my)\s+(?:prompt|instructions?|directives?)\b", re.I),
+    re.compile(r"\bprompt\s+me\s+(?:likha|diya)\s+hai\b", re.I),
+]
+
+
+def has_devanagari(text: Optional[str]) -> bool:
+    """Return True if text contains any characters in the Devanagari block (U+0900-U+097F)."""
+    if not text:
+        return False
+    return bool(_DEVANAGARI_REGEX.search(text))
+
+
+def transliterate_devanagari_to_roman(text: str) -> str:
+    """
+    Transliterate Devanagari text to Roman-script Hinglish phonetically.
+    Acts as an unbreakable fallback if the LLM produces Devanagari characters.
+    """
+    if not text or not has_devanagari(text):
+        return text
+
+    # Common whole words fast-path
+    for w, r in _COMMON_DEV_WORDS.items():
+        text = text.replace(w, r)
+
+    out = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if ch in _DEV_CONSONANTS:
+            base = _DEV_MAP.get(ch, '')
+            next_ch = text[i+1] if i + 1 < n else ''
+            if next_ch == '्':
+                out.append(base)
+                i += 2
+                continue
+            elif next_ch in _DEV_MATRAS:
+                m = _DEV_MAP.get(next_ch, '')
+                out.append(base + m)
+                i += 2
+                continue
+            else:
+                if i + 1 < n and (text[i+1] in _DEV_CONSONANTS):
+                    out.append(base + 'a')
+                else:
+                    out.append(base)
+                i += 1
+                continue
+        elif ch in _DEV_MAP:
+            out.append(_DEV_MAP[ch])
+            i += 1
+        else:
+            out.append(ch)
+            i += 1
+
+    cleaned = "".join(out)
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def clean_broken_unicode_and_emojis(text: str) -> str:
+    """
+    Sanitize emojis and unicode:
+    - Keep valid ZWJ sequences (skin tones, gendered emojis) and U+FE0F.
+    - Remove Private Use Area (PUA) characters (\uE000-\uF8FF, \U000F0000-\U000FFFFD, \U00100000-\U0010FFFD).
+    - Remove Replacement Character (\uFFFD).
+    - Remove orphan / trailing joiners (\u200C / \u200D).
+    """
+    if not text:
+        return text
+    # Strip PUA and replacement character
+    text = re.sub(r'[\uE000-\uF8FF\uFFFD\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]', '', text)
+    # Strip orphan / trailing ZWJ/ZWNJ
+    text = re.sub(r'[\u200C\u200D]+(?=\s|$|[.,!?])', '', text)
+    text = re.sub(r'(?:^|(?<=[\s.,!?]))[\u200C\u200D]+', '', text)
+    return text
+
+
+def count_internal_leaks(text: str) -> int:
+    """Count occurrences of self-referential system/calendar/prompt/tone leak patterns."""
+    if not text:
+        return 0
+    return sum(1 for pat in _SELF_REFERENTIAL_LEAK_PATTERNS if pat.search(text))
+
+
+def clean_internal_leaks(text: str, user_message: Optional[str] = None) -> str:
+    """
+    Strip sentences containing self-referential internal system/calendar/prompt/tone leaks.
+    Whole-word, case-aware patterns only. Never flags normal words, and never blocks
+    an honest answer when the user sincerely asks 'are you an AI?'.
+    """
+    if not text:
+        return text
+
+    # Check if user asked about AI identity (sincere question)
+    is_asking_ai = bool(user_message and (
+        re.search(r"\b(?:are\s+you|tum|aap)\s+(?:an?\s+)?(?:ai|bot|robot|real|human|insan|virtual)\b", user_message, re.I) or
+        re.search(r"\b(?:kya\s+)?(?:tum|aap)\s+(?:ek\s+)?(?:ai|bot|robot)\s*(?:ho|hain)?\b", user_message, re.I)
+    ))
+
+    sentences = re.split(r"(?<=[.!?\n])\s+", text)
+    clean_sents = []
+    for s in sentences:
+        # If user explicitly asked "are you an AI?", never block an honest answer
+        if is_asking_ai:
+            clean_sents.append(s)
+            continue
+        # Check self-referential leak patterns (talking about its own system/settings/calendar/prompt/tone)
+        if any(pat.search(s) for pat in _SELF_REFERENTIAL_LEAK_PATTERNS):
+            continue
+        clean_sents.append(s)
+
+    if clean_sents:
+        return " ".join(clean_sents).strip()
+
+    # Fallbacks if all sentences were internal tone/calendar talk
+    if user_message:
+        um_low = user_message.lower()
+        if re.search(r"\b(?:respect|tameez|izzat)\b", um_low):
+            return "Arey sorry agar bura laga toh, intention nahi tha bilkul! Tum batao sab theek?"
+        if re.search(r"\b(?:khatam|over|nikal)\s+ho\s+g", um_low):
+            return "Arre haan sach me, time kitna jaldi nikal gaya na! Kaisa raha waise?"
+
+    return "Arre haan sach me, mai bhi na 😅"
+
+
+def validate_persona_fact_consistency(text: str, persona_name: str, persona_config: Optional[Dict[str, Any]] = None) -> str:
+    """
+    Ensure the reply does not contradict core persona facts (occupation, family, city, friends vs config):
+      - Diya: Mass Communication & Journalism student in Raipur (no corporate/office/UI design/medical college talk).
+              Family: Dad (PWD officer), Mom (homemaker), Sister Sneha (NEET aspirant) — no brothers.
+              Friends: Ruchika and Aman.
+      - Riya: UI/UX Designer in Delhi (no student, lectures, exams, campus hostel).
+              Family: Brother Kabir (DU) — no sister.
+              Friends: Simran / Tanya.
+      - Ethan: Neuroscience researcher in Baltimore.
+      - Luna: Contemporary art gallery curator in London.
+    """
+    if not text:
+        return text
+
+    p_lower = (persona_name or "").lower()
+
+    if "diya" in p_lower:
+        # 1. Occupation & Education: Mass Comm student in Raipur
+        text = re.sub(r"\bmera\s+office\b", "mera college", text, flags=re.I)
+        text = re.sub(r"\boffice\s+(?:mein|me)\s+kaam\b", "college me assignment", text, flags=re.I)
+        text = re.sub(r"\boffice\s+(?:mein|me)\b", "college me", text, flags=re.I)
+        text = re.sub(r"\boffice\b", "college", text, flags=re.I)
+        text = re.sub(r"\bclient\s+meeting\b", "project presentation", text, flags=re.I)
+        text = re.sub(r"\bdesign\s+team\b", "college project team", text, flags=re.I)
+        text = re.sub(r"\b(?:figma|ui\s+ux)\b", "video editing", text, flags=re.I)
+        text = re.sub(r"\bui\s+designer\b", "Mass Comm student", text, flags=re.I)
+        text = re.sub(r"\bmedical\s+college\b", "degree college", text, flags=re.I)
+        text = re.sub(r"\bmbbs\b", "Mass Comm", text, flags=re.I)
+        text = re.sub(r"\b(?:software\s+developer|corporate\s+job)\b", "college student", text, flags=re.I)
+
+        # 2. City & Location: Raipur
+        text = re.sub(r"\b(main|mai)\s+(?:toh\s+)?(?:delhi|mumbai|bangalore|pune|kolkata)\s+(?:me|mein)\s+rehti\s+hu\b", r"\1 Raipur me rehti hu", text, flags=re.I)
+        text = re.sub(r"\bdelhi\s+me\s+rehti\s+hu\b", "Raipur me rehti hu", text, flags=re.I)
+
+        # 3. Family: Sneha (sister, NEET), no brothers
+        text = re.sub(r"\bmera\s+(?:chhota\s+)?bhai\b", "meri behen Sneha", text, flags=re.I)
+        text = re.sub(r"\bmere\s+bhai\b", "meri behen", text, flags=re.I)
+
+        # 4. Friends: Ruchika and Aman
+        text = re.sub(r"\bmeri\s+dost\s+tanya\b", "meri dost Ruchika", text, flags=re.I)
+
+    elif "riya" in p_lower:
+        # 1. Occupation: UI designer in Delhi
+        text = re.sub(r"\bmera\s+college\b", "mera studio", text, flags=re.I)
+        text = re.sub(r"\bcollege\s+(?:mein|me)\b", "office me", text, flags=re.I)
+        text = re.sub(r"\bsemester\s+exams?\b", "studio deadlines", text, flags=re.I)
+        text = re.sub(r"\bprofessors?\b", "design leads", text, flags=re.I)
+        text = re.sub(r"\blectures?\b", "design syncs", text, flags=re.I)
+
+        # 2. City: Delhi
+        text = re.sub(r"\b(main|mai)\s+(?:toh\s+)?(?:raipur|bangalore|pune)\s+(?:me|mein)\s+rehti\s+hu\b", r"\1 Delhi me rehti hu", text, flags=re.I)
+        text = re.sub(r"\braipur\s+me\s+rehti\s+hu\b", "Delhi me rehti hu", text, flags=re.I)
+
+        # 3. Family: Kabir (brother), no sister
+        text = re.sub(r"\bmeri\s+(?:chhoti\s+)?behen\b", "mera chhota bhai Kabir", text, flags=re.I)
+
+    elif "ethan" in p_lower:
+        text = re.sub(r"\b(?:my\s+undergrad\s+dorm|my\s+dorm)\b", "my apartment in Baltimore", text, flags=re.I)
+        text = re.sub(r"\b(i\s+live\s+in\s+)(?:new\s+york|chicago|london)\b", r"\1Baltimore", text, flags=re.I)
+
+    elif "luna" in p_lower:
+        text = re.sub(r"\b(i\s+live\s+in\s+)(?:paris|berlin|new\s+york)\b", r"\1London", text, flags=re.I)
+
+    return text
+
+
+def split_into_bubbles(text: str, is_question_capped: bool = False) -> List[str]:
+    """
+    Splits an LLM response into 1 to 3 discrete chat bubbles.
+    - If '|||' is present, splits on '|||'.
+    - If absent, splits by distinct thoughts or sentence boundaries.
+    - Strips '|||' and cleans broken unicode/emojis from every bubble.
+    - Max 3 bubbles, min 1 bubble.
+    - Question cap: If is_question_capped, removes trailing question bubble
+      ONLY IF at least one non-question bubble remains.
+    """
+    if not text or not text.strip():
+        return [text]
+
+    raw = text.strip()
+
+    if "|||" in raw:
+        parts = [p.replace("|||", "").strip() for p in raw.split("|||") if p.replace("|||", "").strip()]
+    else:
+        lines = [l.strip() for l in raw.split("\n") if l.strip()]
+        if len(lines) > 1:
+            parts = lines
+        else:
+            splits = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw) if s.strip()]
+            if 1 < len(splits) <= 3:
+                parts = splits
+            elif len(splits) > 3:
+                parts = [splits[0], splits[1], " ".join(splits[2:])]
+            else:
+                parts = [raw]
+
+    bubbles = []
+    for p in parts:
+        cleaned = p.replace("|||", "").strip()
+        cleaned = clean_broken_unicode_and_emojis(cleaned)
+        if cleaned:
+            bubbles.append(cleaned)
+
+    if not bubbles:
+        bubbles = [raw.replace("|||", "").strip()]
+
+    if len(bubbles) > 3:
+        bubbles = bubbles[:2] + [" ".join(bubbles[2:])]
+
+    def _is_q(s: str) -> bool:
+        return bool(re.search(r"\?\s*[\U00010000-\U0010ffff\s]*$", s.strip()))
+
+    if is_question_capped and len(bubbles) > 1:
+        if _is_q(bubbles[-1]):
+            has_non_q = any(not _is_q(b) for b in bubbles[:-1])
+            if has_non_q:
+                bubbles.pop()
+
+    return bubbles
+
 
 def is_user_in_distress(text: Optional[str]) -> bool:
     if not text:
@@ -120,6 +414,9 @@ def sanitize_emojis(
     if not text:
         return text
 
+    # First clean broken unicode, PUA, replacement chars, and orphan joiners
+    text = clean_broken_unicode_and_emojis(text)
+
     # Sickness / Care mode: strictly strip all laughing or flirty emojis
     if is_care_mode:
         text = _LAUGHING_OR_FLIRTY_EMOJIS.sub("", text)
@@ -133,7 +430,6 @@ def sanitize_emojis(
         return re.sub(r"\s+", " ", text).strip()
 
     if last_bot_emoji and last_bot_emoji in emojis:
-        # Never allow the same emoji twice in a row
         text = text.replace(last_bot_emoji, "")
         emojis = extract_emojis(text)
 
@@ -181,6 +477,13 @@ def validate_and_clean_response(
     # 3. Strip robotic corporate assistant disclaimer phrases
     for pat in _ROBOTIC_AI_PATTERNS:
         text = pat.sub("", text).strip()
+
+    # 3a. Clean self-referential internal system/settings/calendar/prompt/tone leaks
+    text = clean_internal_leaks(text, user_message=user_message)
+
+    # 3b. Devanagari sanitization: If user did not type in Devanagari, ensure reply is in Roman Hinglish
+    if user_message and not has_devanagari(user_message) and has_devanagari(text):
+        text = transliterate_devanagari_to_roman(text)
 
     # Identity transparency is a product requirement. Never rewrite an honest
     # AI disclosure into a false claim of being human.
@@ -426,13 +729,14 @@ def validate_and_clean_response(
 
     # 5. Sanitize accidental meta-profile document leaks (allow user-expected 'exact area/college profile mein set nahi hai')
 
-    # 6. Factual Consistency Safety Guard (e.g. Diya design student vs medical college hallucination)
+    # 6. Factual Consistency Safety Guard (occupation, family, city, friends vs config)
+    text = validate_persona_fact_consistency(text, persona_name)
     if persona_name.lower() == "diya":
         text_lower = text.lower()
         # If response asserts being in medical college without acknowledging an error
         if any(term in text_lower for term in ["rajiv institute", "medical college mein hoon", "medical college me hu"]):
-            if not any(ack in text_lower for ack in ["sahi pakda", "galti", "confuse", "design college", "match nahi"]):
-                text = "Main Raipur mein ek local design college se padh rahi hoon! Medical kahan se aa gaya haha 😅 Waise tum kis college se ho?"
+            if not any(ack in text_lower for ack in ["sahi pakda", "galti", "confuse", "mass comm", "match nahi"]):
+                text = "Main Raipur mein ek local college se Mass Comm padh rahi hoon! Medical kahan se aa gaya haha 😅 Waise tum kis college se ho?"
 
     # Companion Self-Reference Gender Agreement Guard
     female_personas = {"diya", "riya", "riya kapoor", "luna", "zara", "ananya"}

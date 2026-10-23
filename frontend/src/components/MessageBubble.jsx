@@ -45,7 +45,7 @@ export default function MessageBubble({ message, profileName, avatarUrl, avatarC
           <span className="message-bubble__name">{profileName}</span>
         )}
         <div className="message-bubble__text">
-          {message.content}
+          {(message.content || '').replace(/\|\|\|/g, '').trim()}
         </div>
         <span className="message-bubble__time" aria-label={`Sent at ${formatTime(message.timestamp)}`}>
           {formatTime(message.timestamp)}

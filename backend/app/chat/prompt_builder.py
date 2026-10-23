@@ -1513,6 +1513,19 @@ def build_final_prompt(
             f"Gives real human depth instead of generic hollow reactions!]"
         )
 
+    # Question Cap: Check last 10 assistant replies against persona cap
+    assistant_replies = [m.get("content", "") for m in chat_history if m.get("role") == "assistant"]
+    last_10 = assistant_replies[-10:] if len(assistant_replies) >= 10 else assistant_replies
+    voice_cfg = persona.get("voice", {}) if isinstance(persona.get("voice"), dict) else {}
+    question_pct = persona.get("question_frequency_pct") or voice_cfg.get("question_frequency_pct", 30)
+    max_q_allowed = max(1, round(len(last_10) * (question_pct / 100.0))) if last_10 else 3
+    actual_q_count = sum(1 for r in last_10 if "?" in r)
+    if last_10 and actual_q_count >= max_q_allowed:
+        special_directives.append(
+            "\n[QUESTION CAP DIRECTIVE — CRITICAL]: Your recent replies have exceeded the persona's question cap. "
+            "no question in this reply. React with personality, statement, or observation only; do NOT ask any questions."
+        )
+
     # New Dating App Match Stage Directive (first-time meeting)
     all_context_str = (rag_context or "") + " " + (rolling_summary or "")
     user_city_known = bool((conversation_state or {}).get("user_city")) or ("User lives in" in all_context_str)
@@ -1734,13 +1747,33 @@ def build_final_prompt(
     return system_prompt, trimmed_history
 
 
+def collapse_history_bubbles(chat_history: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    Join one turn's consecutive assistant message bubbles into one assistant message with ' ||| '.
+    """
+    if not chat_history:
+        return []
+    collapsed: List[Dict[str, str]] = []
+    for turn in chat_history:
+        role = turn.get("role")
+        content = (turn.get("content") or "").strip()
+        if role == "assistant" and collapsed and collapsed[-1].get("role") == "assistant":
+            prev_content = collapsed[-1].get("content", "").strip()
+            clean_prev = prev_content.rstrip(" |")
+            clean_curr = content.lstrip(" |")
+            collapsed[-1]["content"] = f"{clean_prev} ||| {clean_curr}"
+        else:
+            collapsed.append({"role": role, "content": content})
+    return collapsed
+
+
 def _trim_history_to_fit(
     system_prompt: str,
     chat_history: List[Dict[str, str]],
     user_message: str,
 ) -> List[Dict[str, str]]:
     """Progressively trim oldest history messages to respect MAX_CONTEXT_TOKENS budget."""
-    history = list(chat_history)
+    history = collapse_history_bubbles(list(chat_history))
     while history and not fits_in_context(
         system_prompt, history, user_message, MAX_CONTEXT_TOKENS
     ):
@@ -1977,6 +2010,22 @@ def build_direct_prompt(
     if last_reply_shape == "two_line":
         dynamic_parts.append(
             "[STRUCTURE VARIETY NUDGE]: Your last reply was a two-line split. Send a SINGLE-LINE text this time (3 to 8 words max, e.g. 'arre yaar, kya hua?' or 'haha sach me?'). Do NOT format across two lines."
+        )
+
+    # Question Cap Enforcement: Check last 10 assistant replies against persona cap
+    assistant_replies = [m.get("content", "") for m in chat_history if m.get("role") == "assistant"]
+    last_10 = assistant_replies[-10:] if len(assistant_replies) >= 10 else assistant_replies
+    voice_cfg = persona.get("voice", {}) if isinstance(persona.get("voice"), dict) else {}
+    question_pct = persona.get("question_frequency_pct") or voice_cfg.get("question_frequency_pct", 30)
+
+    # Max allowed questions in recent replies
+    max_q_allowed = max(1, round(len(last_10) * (question_pct / 100.0))) if last_10 else 3
+    actual_q_count = sum(1 for r in last_10 if "?" in r)
+
+    if last_10 and actual_q_count >= max_q_allowed:
+        dynamic_parts.append(
+            "[QUESTION CAP DIRECTIVE — CRITICAL]: Your recent replies have exceeded the persona's question cap. "
+            "no question in this reply. React with personality, statement, or observation only; do NOT ask any questions."
         )
 
     # Live context from context_engine

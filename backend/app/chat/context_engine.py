@@ -40,13 +40,13 @@ except Exception as _e:
 # ── Day-part thresholds ────────────────────────────────────────────────────────
 _DAY_PARTS = [
     (5,  "early morning"),
-    (7,  "morning"),       # sunrise
-    (10, "late morning"),
-    (12, "noon"),
-    (14, "afternoon"),
-    (17, "evening"),
-    (20, "night"),
-    (23, "late night"),
+    (7,  "morning"),       # 5 to 7
+    (10, "morning"),       # 7 to 10
+    (12, "late morning"),  # 10 to 12
+    (14, "afternoon"),     # 12 to 14
+    (17, "afternoon"),     # 14 to 17
+    (20, "evening"),       # 17 to 20
+    (23, "night"),         # 20 to 23
     (25, "late night"),    # sentinel
 ]
 
@@ -99,13 +99,15 @@ def _get_meal_window(hour: int) -> Optional[str]:
 
 
 def _compute_festival_context(today: date) -> str:
-    """Return a short text about near-term festivals (within ±14 days)."""
-    hits = []
+    """Return a short text about near-term festivals (ended within 7 days, ongoing, or upcoming within 21 days). Limit to at most 2 items."""
+    ongoing = []
+    ended = []
+    upcoming = []
+
     for fest in _FESTIVAL_DATA:
         name = fest["name"]
         hint = fest.get("topic_hint") or fest.get("topic_hindi", "")
 
-        # Each festival entry can have a single "date" or "start"/"end"
         for entry in fest.get("dates", []):
             if "date" in entry:
                 fest_start = date.fromisoformat(entry["date"])
@@ -121,23 +123,30 @@ def _compute_festival_context(today: date) -> str:
 
             # Ongoing
             if fest_start <= today <= fest_end:
-                hits.append(
-                    f"• {name} is CURRENTLY HAPPENING (ends in {delta_end} day(s)). "
-                    f"Topic hint: {hint}"
-                )
-            # Upcoming within 14 days
-            elif 0 < delta_start <= 14:
-                hits.append(
-                    f"• {name} is coming up in {delta_start} day(s) ({fest_start.strftime('%d %b')}). "
-                    f"Topic hint: {hint}"
-                )
-            # Just passed within 5 days
-            elif -5 <= delta_end < 0:
-                hits.append(
-                    f"• {name} just ended {abs(delta_end)} day(s) ago. "
-                    f"Topic hint (memories/recap): {hint}"
-                )
-    return "\n".join(hits) if hits else ""
+                ongoing.append((
+                    abs(delta_end),
+                    f"• {name} is CURRENTLY HAPPENING (ends in {delta_end} day(s)). Topic hint: {hint}"
+                ))
+            # Just ended within last 7 days (amendment 7)
+            elif -7 <= delta_end < 0:
+                days_ago = abs(delta_end)
+                ended.append((
+                    days_ago,
+                    f"• {name} ended {days_ago} day(s) ago. Topic hint (ask how it went / memories): {hint}"
+                ))
+            # Upcoming within 21 days
+            elif 0 < delta_start <= 21:
+                upcoming.append((
+                    delta_start,
+                    f"• {name} is coming up in {delta_start} day(s) ({fest_start.strftime('%d %b')}). Topic hint: {hint}"
+                ))
+
+    ended.sort(key=lambda x: x[0])
+    upcoming.sort(key=lambda x: x[0])
+
+    combined = [item[1] for item in ongoing] + [item[1] for item in ended] + [item[1] for item in upcoming]
+    # Show at most 2 festival items (amendment 7)
+    return "\n".join(combined[:2]) if combined else ""
 
 
 def build_live_context(timezone: str = "Asia/Kolkata") -> str:
@@ -174,7 +183,7 @@ def build_live_context(timezone: str = "Asia/Kolkata") -> str:
     if month_vibe:
         lines.append(f"Season vibe : {month_vibe}")
     if festival_ctx:
-        lines.append(f"Festival calendar :\n{festival_ctx}")
+        lines.append(f"[FACTS - do not contradict]\nFestival calendar :\n{festival_ctx}")
 
     lines.append(
         "Use context naturally like a real person — do NOT repeat festival/time/meal talk "

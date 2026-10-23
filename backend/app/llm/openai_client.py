@@ -177,7 +177,8 @@ class OpenAIClient(BaseLLMClient):
         user_message: str,
     ) -> List[Dict[str, str]]:
         messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
-        history = list(chat_history or [])
+        from app.chat.prompt_builder import collapse_history_bubbles
+        history = collapse_history_bubbles(list(chat_history or []))
         # Drop duplicate current-turn user message if caller already appended it
         if (
             history
