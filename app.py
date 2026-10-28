@@ -23,7 +23,7 @@ try:
     seed_persona_knowledge()
     db = SessionLocal()
     if db.get(LLMStatus, 1) is None:
-        db.add(LLMStatus(id=1, current_provider="groq", groq_available=True))
+        db.add(LLMStatus(id=1, current_provider="openai", groq_available=False))
         db.commit()
     db.close()
     logger.info("Spark database and vector store initialized successfully.")

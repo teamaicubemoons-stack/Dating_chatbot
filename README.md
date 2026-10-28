@@ -1,5 +1,5 @@
 ---
-title: Spark Dating AI Chatbot
+title: Camflingo
 emoji: 💬
 colorFrom: purple
 colorTo: pink

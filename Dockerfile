@@ -36,6 +36,7 @@ COPY --chown=user:user backend/ ./backend/
 
 # Copy built frontend assets
 COPY --chown=user:user --from=frontend-builder /app/frontend/dist ./frontend/dist
+COPY --chown=user:user --from=frontend-builder /app/frontend/dist ./backend/static
 
 # Expose port (default 7860, or dynamic PORT on cloud platforms like Render)
 EXPOSE 7860
