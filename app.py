@@ -17,10 +17,17 @@ from app.models.db_models import LLMStatus
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("spark_gradio")
 
+# Load personas
+personas = load_all_personas()
+persona_map = {p["id"]: p for p in personas if isinstance(p, dict) and "id" in p}
+default_persona_id = personas[0]["id"] if personas and isinstance(personas[0], dict) else "profile_1"
+
 # Initialize SQLite database and seed vector store
 try:
     init_db()
-    seed_persona_knowledge()
+    for p in personas:
+        if isinstance(p, dict) and "id" in p:
+            seed_persona_knowledge(p["id"], p)
     db = SessionLocal()
     if db.get(LLMStatus, 1) is None:
         db.add(LLMStatus(id=1, current_provider="openai", groq_available=False))
@@ -29,11 +36,6 @@ try:
     logger.info("Spark database and vector store initialized successfully.")
 except Exception as e:
     logger.error(f"Initialization error: {e}")
-
-# Load personas
-personas = load_all_personas()
-persona_map = {p["id"]: p for p in personas if isinstance(p, dict) and "id" in p}
-default_persona_id = personas[0]["id"] if personas and isinstance(personas[0], dict) else "profile_1"
 
 def get_avatar_path(avatar_url: str) -> str:
     filename = os.path.basename(avatar_url or "")
@@ -278,11 +280,9 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
                 value=get_initial_greeting(default_persona_id),
                 height=560,
                 show_label=False,
-                type="messages",
-                bubble_full_width=False,
                 avatar_images=(
                     None,
-                    get_avatar_path(persona_map[default_persona_id].avatar_url) if default_persona_id in persona_map else None
+                    get_avatar_path(persona_map[default_persona_id].get("avatar_url", "")) if default_persona_id in persona_map else None
                 )
             )
 
