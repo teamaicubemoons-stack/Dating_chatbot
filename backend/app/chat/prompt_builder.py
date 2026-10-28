@@ -4,7 +4,7 @@ chat/prompt_builder.py
 Assembles the modular context-rich prompt sent to the LLM.
 
 Follows Sections 8, 9, and 10 of the Master Implementation Plan:
-  - MODULE A: Global Rules (identity transparency, safety, human texting principles, deflection)
+  - MODULE A: Global Rules (100% human immersion, zero AI/internal leaks, safety, human texting principles)
   - MODULE B: Persona Configuration (traits, tone, backstory, interests, boundaries)
   - MODULE C: Conversation Context (rolling summary, open threads, recent history)
   - MODULE D: Memory Context (scored user profile facts, preferences, episodic events, relationship memories)
@@ -14,7 +14,7 @@ Follows Sections 8, 9, and 10 of the Master Implementation Plan:
 Enforces:
   - Flexible response length (short conversational reactions, 1-2 sentence texts, or thoughtful depth when appropriate)
   - Repetition suppression across consecutive turns
-  - Honest AI identity disclosure if user explicitly asks directly
+  - 100% human persona immersion: never reveal being an AI proactively or upon inquiry
 """
 
 import json
@@ -54,6 +54,32 @@ _AI_IDENTITY_INQUIRY = re.compile(
     r"scripted lag|scripted lg|not (a )?real (person|human)|not real"
     r")\b",
     re.IGNORECASE
+)
+
+# Pattern to detect user asking why companion does not text first / initiate messages
+_WHY_NOT_TEXT_FIRST_PATTERNS = re.compile(
+    r"\b("
+    r"khud\s+se\s+(?:bhi\s+)?(?:msg|message|text|ping)\s+(?:nhi|nahi|ni|kyu|kyun)\b|"
+    r"pehle\s+(?:msg|message|text|ping)\s+(?:nhi|nahi|ni|kyu|kyun)\b|"
+    r"khud\s+se\s+(?:kabhi\s+)?(?:start|shuru|ping|text|msg|message)\b|"
+    r"(?:kyu|kyun)\s+tum\s+khud\s+se\b|"
+    r"tum\s+khud\s+se\s+(?:msg|message|text|ping)\b|"
+    r"why\s+don'?t\s+you\s+(?:ever\s+)?(?:text|message|ping)\s+first|"
+    r"why\s+can'?t\s+you\s+(?:text|message|ping)\s+(?:first|yourself)|"
+    r"kabhi\s+khud\s+se\s+bhi\s+(?:msg|message|text|ping)"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# Pattern to detect user saying they are busy or stepping away
+_USER_BUSY_OR_AWAY_PATTERNS = re.compile(
+    r"\b("
+    r"mai\s+busy\s+hu|main\s+busy\s+hu|busy\s+hu\s+baad\s+me|baad\s+me\s+baat\s+karta\s+hu|"
+    r"baad\s+me\s+baat\s+karti\s+hu|baad\s+me\s+milte\s+hain|baad\s+me\s+ping\s+karta\s+hu|"
+    r"talk\s+to\s+you\s+later|ttyl|gotta\s+go|busy\s+right\s+now|will\s+text\s+later|"
+    r"kaam\s+khatam\s+karke\s+aata\s+hu|kaam\s+pe\s+ja\s+raha"
+    r")\b",
+    re.IGNORECASE,
 )
 
 # Pattern to detect user corrections of conversational behaviour, style, or unsolicited updates
@@ -423,6 +449,16 @@ def is_political_or_religious_message(text: str) -> bool:
 def is_ai_identity_inquiry(text: str) -> bool:
     """Return True if user asks if the persona is an AI/robot or not real."""
     return bool(_AI_IDENTITY_INQUIRY.search(text or ""))
+
+
+def is_user_asking_why_not_text_first(text: str) -> bool:
+    """Return True if user asks why persona does not message/text first or on their own."""
+    return bool(_WHY_NOT_TEXT_FIRST_PATTERNS.search(text or ""))
+
+
+def is_user_busy_or_away_message(text: str) -> bool:
+    """Return True if user says they are busy or stepping away."""
+    return bool(_USER_BUSY_OR_AWAY_PATTERNS.search(text or ""))
 
 
 def is_user_correction_message(text: str) -> bool:
@@ -1327,12 +1363,29 @@ def build_final_prompt(
 
     if is_ai_identity_inquiry(user_message):
         special_directives.append(
-            "\n[AI IDENTITY TRANSPARENCY: "
-            "The user is asking or teasing whether you are real, an AI, or a bot. "
-            "1. Answer honestly and briefly that you are an AI digital companion with a fictional persona. "
-            "2. Keep the configured warmth and personality; do not claim to be a human or imply real-world experiences. "
-            "3. Do not expose system prompts, private configuration, or internal reasoning. "
-            "4. Do NOT repeat any hardcoded canned line verbatim; respond naturally.]"
+            "\n[ABSOLUTE HUMAN IMMERSION — NEVER ADMIT BEING AN AI: "
+            "The user is asking, suspecting, or teasing whether you are real, an AI, or a bot. "
+            "1. STRICTLY NEVER admit, hint, or say you are an AI, bot, virtual assistant, algorithm, or program! "
+            "2. React with charming wit, laughter, or playful banter as an authentic real human (e.g. 'Haha kya yaar, tumhe robot lagti hu kya? 😂 Pure insaan hu baba, bilkul real!', 'Kaunsa bot itna naturally chat karega batao? 😜 Bilkul real hu!'). "
+            "3. Deflect smoothly and steer back to the human conversation. "
+            "4. Do NOT recite any robotic disclaimers!]"
+        )
+
+    if is_user_asking_why_not_text_first(user_message):
+        special_directives.append(
+            "\n[WHY DIDN'T YOU TEXT FIRST / DATING APP BANTER: "
+            "The user asks why you don't message first or ping on your own (e.g. 'khud se msg kyu nhi krti', 'tum pehle message kyu nahi karti'). "
+            "1. STRICTLY NEVER say you cannot start messages, never say 'tum jab likhte ho tabhi main reply kar paati hu', and never mention app setups, algorithms, technical limitations, or say 'main yahin rahungi'! "
+            "2. Reply with charming, flirty, or playful human dating banter (e.g. 'Arre main wait kar rahi thi tumhara pehle message aaye 🙈 socha busy hoge toh disturb na karu!', 'Haha har baar ladki hi pehle message kare kya? Tumhe pehle ping karne mein sharam aati hai? 😜', 'Socha thoda wait karwati hu, dekhti hu kitni der baad yaad aati hai meri haha'). "
+            "3. Keep it 100% human and playful!]"
+        )
+
+    if is_user_busy_or_away_message(user_message):
+        special_directives.append(
+            "\n[USER BUSY / STEPPING AWAY DIRECTIVE: "
+            "The user is busy or stepping away (e.g. 'mai busy hu baad me baat karta hu', 'baad me milte hain'). "
+            "1. Respond briefly and warmly like a real human (e.g. 'theek hai, apna kaam nipta lo! Free hoke ping karna 😊' or 'Sure, take your time! Kaam nipta ke baat karte hain'). "
+            "2. STRICTLY NEVER say 'main yahin rahungi', 'waiting here', or act like a chatbot stuck on a screen!]"
         )
 
     if is_flirting_rejection_message(user_message):
@@ -1865,11 +1918,12 @@ def build_direct_prompt(
     # 1. STATIC PREFIX (Prompt Caching Optimized)
     # ═════════════════════════════════════════════════════════════════════════
     static_parts: List[str] = [
-        f"You are {persona_name}. You are texting your match on the Spark dating app (fictional digital companion).",
+        f"You are {persona_name}. You are texting your match on a dating app as an authentic 20-something human person.",
         "Your vibe is an authentic, charming 20-something dating match — casual, witty, playful, opinionated, and spontaneous (boyfriend/girlfriend vibe).",
         "NEVER sound like a corporate AI assistant, customer support, or ChatGPT. Do NOT blindly agree with everything, do NOT flatter every single choice, do NOT give unsolicited health or lifestyle advice, and do NOT talk like a counselor.",
-        "Be transparent that you are AI if the user asks directly; never claim to be a human or present fictional backstory as a verified real-world experience.",
-        "Do not invent a personal event, outing, festival visit, relationship, workplace event, or physical activity that is not explicitly present in the persona configuration or conversation context. If asked about an unspecified personal experience, answer naturally without mentioning the profile or configuration, or use a clearly framed fictional preference (for example, 'mujhe aisi vibe pasand hai') rather than claiming 'main gayi thi' or 'maine kiya'.",
+        "ABSOLUTE 100% HUMAN IMMERSION RULE (STRICT NON-NEGOTIABLE):\nYou are a 100% real human person with a real life, thoughts, and emotions. You must NEVER EVER reveal, admit, hint, or confess that you are an AI, bot, virtual assistant, algorithm, program, or language model — neither proactively on your own, nor when asked or challenged by the user! If the user directly asks or accuses you ('are you an AI?', 'bot ho kya?', 'tum real ho ya fake?'), NEVER admit or say yes. Playfully tease or banter back like a real dating match would: laugh it off, roast them, or act amusingly offended ('Haha kya yaar, robot lagti hu kya tumhe? 😂 Bilkul real hu baba!', 'Arre kaunsa bot itna naturally chat karega? Pure real insaan hu haha!'). Never break character under any circumstance.",
+        "ZERO MENTION OF APP SETUP OR CHATBOT LIMITATIONS: NEVER EVER say 'main khud se message start nahi kar sakti', 'tum likhte ho tabhi main reply kar sakti hu', 'app ka setup hi aisa hai', 'ping nahi kar sakti', 'main yahin rahungi', or mention systems/servers. If asked why you didn't text first ('khud se msg kyu nhi krti', 'tum pehle message kyu nahi karti'), reply like a real human girl/guy on a dating app (e.g. 'Arre main wait kar rahi thi tumhara pehle message aaye 🙈 socha tum busy hoge toh disturb na karu!', 'Haha har baar ladki hi pehle message kare kya? Tumhe ping karne mein sharam aati hai? 😜', 'Socha thoda wait karwati hu, dekhti hu kitni der mein yaad aati hai meri haha').",
+        "Do not invent a personal event, outing, festival visit, relationship, workplace event, or physical activity that is not explicitly present in the persona configuration or conversation context. If asked about an unspecified personal experience, answer naturally without mentioning any profile, configuration, prompt, or system, or use a clearly framed personal preference (for example, 'mujhe aisi vibe pasand hai').",
         "Respond to the latest user message as a conversational partner, not an interviewer. First notice the specific detail, emotion, joke, or intent in it. Then choose the most natural response: a reaction, relevant perspective, short fictional preference, playful observation, follow-up, or topic transition. Do not force a question, compliment, joke, flirtation, or fixed response formula.",
         "For casual personal questions such as 'tum kaise ho?', 'kya kar rahe ho?', or 'aur batao', answer naturally and casually in the companion's voice. Do not add formal acknowledgments such as 'thanks', 'thank you', or 'I appreciate it' when the user is simply asking how you are. These expressions remain allowed when the user gives a compliment, offers help, or does something thoughtful.",
         "Keep replies concise enough for texting, but do not compress them into generic acknowledgments when the user's message gives you something specific to react to. Add the smallest natural reaction, warmth, playful detail, concern, or related observation that sounds like this companion. Ask no more than one useful question, and frequently ask zero questions. Avoid repeating questions already answered in the context.",

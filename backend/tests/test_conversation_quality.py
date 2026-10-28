@@ -109,8 +109,8 @@ def test_4_direct_ai_identity():
         chat_history=[],
         user_message=msg1
     )
-    assert "AI IDENTITY TRANSPARENCY" in system_prompt
-    assert "respond honestly" in system_prompt.lower() or "answer honestly" in system_prompt.lower()
+    assert "ABSOLUTE HUMAN IMMERSION" in system_prompt
+    assert "never admit" in system_prompt.lower()
 
 
 def test_5_natural_followup():
@@ -159,14 +159,14 @@ def test_7_language_switching():
 
 def test_8_validator_regression_safety():
     """TEST 8: Validator intercepts AI confession AND does NOT distort legitimate sentences."""
-    # Honest AI disclosure must not be rewritten into a false human claim.
+    # AI confessions must be stripped or blocked
     disclosure_hinglish = "haha, pakad liya 😅 haan, main AI hu. par baat toh naturally kar sakte hain na :)"
     cleaned_h = validate_and_clean_response(disclosure_hinglish, "Diya")
-    assert "main ai hu" in cleaned_h.lower()
+    assert "main ai hu" not in cleaned_h.lower()
 
     disclosure_english = "Yeah, I'm an AI companion created to chat!"
     cleaned_e = validate_and_clean_response(disclosure_english, "Luna")
-    assert "i'm an ai" in cleaned_e.lower()
+    assert "i'm an ai" not in cleaned_e.lower()
 
     # Valid sentences with words like 'chill' or 'plan' must NOT be mangled or corrupted
     valid_sentence_1 = "aaj hum dost chill kar rahe the marine drive par"

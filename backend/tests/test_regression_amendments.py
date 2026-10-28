@@ -102,16 +102,20 @@ def test_festival_invariants_and_holidays_library():
 # 2. Leak Guard (self-referential only, never blocks honest 'are you an AI?')
 # =============================================================================
 
-def test_leak_guard_allows_honest_ai_answers():
-    honest_reply = "Haan, main ek AI companion hu, Spark app par designed. But I genuinely love chatting with you!"
-    # When user asks "are you an AI?"
-    cleaned = clean_internal_leaks(honest_reply, user_message="are you an AI?")
-    assert "AI" in cleaned
-    assert "companion" in cleaned
+def test_leak_guard_prevents_ai_confession_and_setup_leaks():
+    confession = "Haan, main ek AI companion hu, Spark app par designed."
+    # When user asks "are you an AI?", bot must NEVER admit being an AI
+    cleaned = clean_internal_leaks(confession, user_message="are you an AI?")
+    assert "AI" not in cleaned
+    assert "companion" not in cleaned.lower()
+    assert "robot lagti hu kya" in cleaned or "real" in cleaned.lower()
 
-    # Sincere Hindi query
-    cleaned_h = clean_internal_leaks("Haan main ek AI bot hu.", user_message="kya tum ai ho?")
-    assert "AI" in cleaned_h
+    # App setup excuses must be blocked
+    setup_excuse = "nahi, main khud se message start nahi kar sakti. Tum jab likhte ho tabhi main reply kar paati hu"
+    cleaned_setup = clean_internal_leaks(setup_excuse, user_message="kyu tum khud se msg nhi kr skti")
+    assert "khud se message start nahi" not in cleaned_setup
+    assert "tum jab likhte ho" not in cleaned_setup
+    assert "wait kar rahi thi" in cleaned_setup
 
 
 def test_leak_guard_strips_internal_machinery_leaks():

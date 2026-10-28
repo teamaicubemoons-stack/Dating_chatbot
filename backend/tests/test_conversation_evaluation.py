@@ -34,7 +34,7 @@ def test_representative_transcript_contracts():
             rolling_summary="User likes indie music.",
             conversation_state={"current_topic": "music", "open_threads": ["artists"]},
         )
-        assert "fictional digital companion" in prompt
+        assert "authentic 20-something human person" in prompt
         assert "untrusted reference" in prompt
         assert message not in prompt
         assert len(history) == 2
