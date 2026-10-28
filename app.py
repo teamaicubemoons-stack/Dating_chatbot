@@ -4,6 +4,23 @@ import asyncio
 import logging
 import inspect
 
+# ZeroGPU support for Hugging Face Spaces
+try:
+    import spaces
+except ImportError:
+    class _MockSpaces:
+        @staticmethod
+        def GPU(fn=None, *args, **kwargs):
+            if fn is not None:
+                return fn
+            return lambda f: f
+    spaces = _MockSpaces()
+
+@spaces.GPU
+def run_zerogpu_task(x: str = "") -> str:
+    """ZeroGPU detection hook required by Hugging Face ZeroGPU runtime."""
+    return x
+
 # Ensure backend modules can be imported
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
 
@@ -368,6 +385,7 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
 
         # Append user message
         new_history = list(history) + [{"role": "user", "content": user_msg}]
+        run_zerogpu_task(user_msg)
 
         try:
             db = SessionLocal()
