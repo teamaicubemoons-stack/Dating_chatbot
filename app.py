@@ -32,11 +32,11 @@ except Exception as e:
 
 # Load personas
 personas = load_all_personas()
-persona_map = {p.id: p for p in personas}
-default_persona_id = personas[0].id if personas else "profile_1"
+persona_map = {p["id"]: p for p in personas if isinstance(p, dict) and "id" in p}
+default_persona_id = personas[0]["id"] if personas and isinstance(personas[0], dict) else "profile_1"
 
 def get_avatar_path(avatar_url: str) -> str:
-    filename = os.path.basename(avatar_url)
+    filename = os.path.basename(avatar_url or "")
     local_path = os.path.join("avatars", filename)
     if os.path.exists(local_path):
         return local_path
@@ -49,31 +49,31 @@ def format_profile_html(p_id: str) -> str:
     p = persona_map.get(p_id)
     if not p:
         return "<p>Persona not found</p>"
-    avatar_src = f"/file/{get_avatar_path(p.avatar_url)}"
-    tags_html = "".join([f'<span class="spark-badge">{t}</span>' for t in p.personality_traits])
+    avatar_src = f"/file/{get_avatar_path(p.get('avatar_url', ''))}"
+    tags_html = "".join([f'<span class="spark-badge">{t}</span>' for t in p.get("personality_traits", [])])
     return f"""
     <div class="spark-profile-card">
         <div class="spark-avatar-container">
-            <img src="{avatar_src}" alt="{p.name}" class="spark-avatar-img" />
+            <img src="{avatar_src}" alt="{p.get('name', '')}" class="spark-avatar-img" />
             <span class="spark-status-dot"></span>
         </div>
         <div class="spark-profile-info">
             <div class="spark-profile-header">
-                <h2 class="spark-profile-name">{p.name}, {p.age}</h2>
-                <span class="spark-location">📍 {p.city}</span>
+                <h2 class="spark-profile-name">{p.get('name', '')}, {p.get('age', '')}</h2>
+                <span class="spark-location">📍 {p.get('city', '')}</span>
             </div>
-            <p class="spark-bio">{p.short_bio}</p>
+            <p class="spark-bio">{p.get('short_bio', '')}</p>
             <div class="spark-tags">{tags_html}</div>
-            <div class="spark-tone"><strong>Vibe:</strong> {p.tone}</div>
+            <div class="spark-tone"><strong>Vibe:</strong> {p.get('tone', '')}</div>
         </div>
     </div>
     """
 
 def get_initial_greeting(p_id: str):
     p = persona_map.get(p_id)
-    if p and p.initial_openers:
-        return [({"role": "assistant", "content": p.initial_openers[0]})]
-    return [({"role": "assistant", "content": "Hey! Nice to meet you 🙂"})]
+    if p and p.get("initial_openers"):
+        return [{"role": "assistant", "content": p["initial_openers"][0]}]
+    return [{"role": "assistant", "content": "Hey! Nice to meet you 🙂"}]
 
 # Custom CSS for dark glassmorphism Spark Dating UI
 custom_css = """
@@ -253,7 +253,7 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
         with gr.Column(scale=4):
             gr.Markdown("### 🌟 Choose Your Persona")
             persona_dropdown = gr.Radio(
-                choices=[(f"{p.name} ({p.city})", p.id) for p in personas],
+                choices=[(f"{p.get('name', '')} ({p.get('city', '')})", p.get('id', '')) for p in personas if isinstance(p, dict)],
                 value=default_persona_id,
                 label="Available Personas",
                 interactive=True
@@ -300,7 +300,7 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
     # Call simulation handlers
     def start_call(p_id):
         p = persona_map.get(p_id)
-        name = p.name if p else "Persona"
+        name = p.get("name", "Persona") if p else "Persona"
         call_html = f"""
         <div class="spark-call-box">
             <h3 style="color: #22c55e; margin: 0 0 6px;">📞 Call Connected with {name}</h3>
@@ -337,7 +337,7 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
     # Change persona handler
     def on_persona_change(selected_id):
         p = persona_map.get(selected_id)
-        avatar = get_avatar_path(p.avatar_url) if p else None
+        avatar = get_avatar_path(p.get("avatar_url", "")) if p else None
         greeting = get_initial_greeting(selected_id)
         card_html = format_profile_html(selected_id)
         return (
