@@ -1,8 +1,7 @@
 import os
 import sys
-import asyncio
 import logging
-import inspect
+from pathlib import Path
 
 # ZeroGPU support for Hugging Face Spaces
 try:
@@ -21,426 +20,141 @@ def run_zerogpu_task(x: str = "") -> str:
     """ZeroGPU detection hook required by Hugging Face ZeroGPU runtime."""
     return x
 
-# Ensure backend modules can be imported
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
+# Ensure backend modules can be imported without namespace collision
+base_dir = Path(__file__).resolve().parent
+backend_dir = base_dir / "backend"
+if str(backend_dir) in sys.path:
+    sys.path.remove(str(backend_dir))
+sys.path.insert(0, str(backend_dir))
+if "app" in sys.modules and not hasattr(sys.modules["app"], "__path__"):
+    del sys.modules["app"]
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import Mount, Route
 import gradio as gr
+
 from app.config.settings import settings
 from app.api.dependencies import init_db, SessionLocal
-from app.personas.persona_loader import load_all_personas, load_persona
+from app.models.db_models import LLMStatus, Profile
+from app.personas.persona_loader import load_all_personas
 from app.rag.vector_store import seed_persona_knowledge
-from app.chat.chat_engine import process_chat_message
-from app.models.db_models import LLMStatus
+from app.scheduler.openai_health_check import start_scheduler
+from app.api import routes_chat, routes_profiles, routes_health, routes_memories
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("spark_gradio")
+logger = logging.getLogger("spark_app")
 
-# Load personas
-personas = load_all_personas()
-persona_map = {p["id"]: p for p in personas if isinstance(p, dict) and "id" in p}
-default_persona_id = personas[0]["id"] if personas and isinstance(personas[0], dict) else "profile_1"
-
-# Initialize SQLite database and seed vector store
+# Initialize database, personas, and ChromaDB vector store
 try:
     init_db()
-    for p in personas:
-        if isinstance(p, dict) and "id" in p:
-            seed_persona_knowledge(p["id"], p)
     db = SessionLocal()
+    # Ensure LLMStatus exists
     if db.get(LLMStatus, 1) is None:
         db.add(LLMStatus(id=1, current_provider="openai", groq_available=False))
         db.commit()
+
+    # Load personas and sync with Profile DB table
+    personas = load_all_personas()
+    for persona in personas:
+        if isinstance(persona, dict) and "id" in persona:
+            existing = db.get(Profile, persona["id"])
+            if existing is None:
+                db.add(Profile(
+                    id=persona["id"],
+                    name=persona.get("name", "Companion"),
+                    short_bio=persona.get("short_bio", ""),
+                    avatar_url=persona.get("avatar_url", ""),
+                ))
+            seed_persona_knowledge(persona["id"], persona)
+    db.commit()
     db.close()
-    logger.info("Spark database and vector store initialized successfully.")
+
+    # Start background health-check scheduler
+    start_scheduler()
+    logger.info("Application initialized successfully with %d personas.", len(personas))
 except Exception as e:
-    logger.error(f"Initialization error: {e}")
+    logger.error(f"Initialization warning: {e}", exc_info=True)
 
-def get_avatar_path(avatar_url: str) -> str:
-    filename = os.path.basename(avatar_url or "")
-    local_path = os.path.join("avatars", filename)
-    if os.path.exists(local_path):
-        return local_path
-    frontend_path = os.path.join("frontend", "public", "avatars", filename)
-    if os.path.exists(frontend_path):
-        return frontend_path
-    return ""
+# Locate static build directories
+possible_dist_paths = [
+    base_dir / "frontend" / "dist",
+    backend_dir / "static",
+    base_dir / "static",
+]
+static_dir = next((p for p in possible_dist_paths if (p / "index.html").exists()), None)
+assets_dir = (static_dir / "assets") if static_dir else None
 
-def format_profile_html(p_id: str) -> str:
-    p = persona_map.get(p_id)
-    if not p:
-        return "<p>Persona not found</p>"
-    avatar_src = f"/file/{get_avatar_path(p.get('avatar_url', ''))}"
-    tags_html = "".join([f'<span class="spark-badge">{t}</span>' for t in p.get("personality_traits", [])])
-    return f"""
-    <div class="spark-profile-card">
-        <div class="spark-avatar-container">
-            <img src="{avatar_src}" alt="{p.get('name', '')}" class="spark-avatar-img" />
-            <span class="spark-status-dot"></span>
-        </div>
-        <div class="spark-profile-info">
-            <div class="spark-profile-header">
-                <h2 class="spark-profile-name">{p.get('name', '')}, {p.get('age', '')}</h2>
-                <span class="spark-location">📍 {p.get('city', '')}</span>
-            </div>
-            <p class="spark-bio">{p.get('short_bio', '')}</p>
-            <div class="spark-tags">{tags_html}</div>
-            <div class="spark-tone"><strong>Vibe:</strong> {p.get('tone', '')}</div>
-        </div>
-    </div>
-    """
+possible_avatar_paths = [
+    base_dir / "avatars",
+    backend_dir / "static" / "avatars",
+    base_dir / "frontend" / "public" / "avatars",
+]
+avatars_dir = next((p for p in possible_avatar_paths if p.exists()), None)
 
-def get_initial_greeting(p_id: str):
-    p = persona_map.get(p_id)
-    if p and p.get("initial_openers"):
-        return [{"role": "assistant", "content": p["initial_openers"][0]}]
-    return [{"role": "assistant", "content": "Hey! Nice to meet you 🙂"}]
-
-# Custom CSS for dark glassmorphism Spark Dating UI
-custom_css = """
-/* Spark AI Dating App Theme */
-:root {
-    --spark-pink: #ec4899;
-    --spark-purple: #8b5cf6;
-    --spark-bg: #0f172a;
-    --spark-card: rgba(30, 41, 59, 0.7);
-    --spark-border: rgba(255, 255, 255, 0.1);
-}
-
-.gradio-container {
-    background: radial-gradient(circle at top right, #1e1136, #0f172a 60%) !important;
-    font-family: 'Inter', -apple-system, sans-serif !important;
-    max-width: 1200px !important;
-    margin: 0 auto !important;
-}
-
-.spark-header {
-    text-align: center;
-    padding: 24px 0 16px;
-    border-bottom: 1px solid var(--spark-border);
-    margin-bottom: 24px;
-}
-
-.spark-title {
-    font-size: 2.2rem;
-    font-weight: 800;
-    background: linear-gradient(135deg, #f472b6, #c084fc, #60a5fa);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin: 0;
-}
-
-.spark-subtitle {
-    color: #94a3b8;
-    font-size: 1rem;
-    margin-top: 6px;
-}
-
-.spark-profile-card {
-    display: flex;
-    gap: 20px;
-    background: var(--spark-card);
-    border: 1px solid var(--spark-border);
-    border-radius: 18px;
-    padding: 20px;
-    backdrop-filter: blur(12px);
-    margin-bottom: 16px;
-    align-items: center;
-}
-
-.spark-avatar-container {
-    position: relative;
-    width: 90px;
-    height: 90px;
-    flex-shrink: 0;
-}
-
-.spark-avatar-img {
-    width: 90px;
-    height: 90px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 3px solid var(--spark-pink);
-    box-shadow: 0 0 16px rgba(236, 72, 153, 0.35);
-}
-
-.spark-status-dot {
-    position: absolute;
-    bottom: 4px;
-    right: 4px;
-    width: 16px;
-    height: 16px;
-    background-color: #22c55e;
-    border: 2px solid #0f172a;
-    border-radius: 50%;
-}
-
-.spark-profile-info {
-    flex: 1;
-}
-
-.spark-profile-header {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-}
-
-.spark-profile-name {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #f8fafc;
-    margin: 0;
-}
-
-.spark-location {
-    color: #94a3b8;
-    font-size: 0.9rem;
-}
-
-.spark-bio {
-    color: #cbd5e1;
-    font-size: 0.95rem;
-    margin: 6px 0;
-    line-height: 1.4;
-}
-
-.spark-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 8px 0;
-}
-
-.spark-badge {
-    background: rgba(236, 72, 153, 0.15);
-    color: #f472b6;
-    border: 1px solid rgba(236, 72, 153, 0.3);
-    padding: 3px 10px;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: 500;
-}
-
-.spark-tone {
-    font-size: 0.85rem;
-    color: #94a3b8;
-}
-
-.spark-call-box {
-    background: rgba(15, 23, 42, 0.9);
-    border: 1px solid rgba(236, 72, 153, 0.4);
-    border-radius: 16px;
-    padding: 16px;
-    text-align: center;
-    margin-bottom: 16px;
-    animation: pulseGlow 2s infinite ease-in-out;
-}
-
-@keyframes pulseGlow {
-    0%, 100% { box-shadow: 0 0 10px rgba(236, 72, 153, 0.2); }
-    50% { box-shadow: 0 0 25px rgba(236, 72, 153, 0.5); }
-}
-
-.call-btn {
-    background: linear-gradient(135deg, #10b981, #059669) !important;
-    color: white !important;
-    border: none !important;
-    font-weight: 600 !important;
-    border-radius: 12px !important;
-}
-
-.hangup-btn {
-    background: linear-gradient(135deg, #ef4444, #dc2626) !important;
-    color: white !important;
-    border: none !important;
-    font-weight: 600 !important;
-    border-radius: 12px !important;
-}
-"""
-
-with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr.themes.Soft(primary_hue="pink", secondary_hue="purple")) as demo:
-    gr.HTML("""
-    <div class="spark-header">
-        <h1 class="spark-title">✦ Spark Dating & Companion</h1>
-        <p class="spark-subtitle">Multi-Persona AI Companion powered by Groq LLaMA 3.3 70B & Claude • Hinglish & English Conversationalist</p>
-    </div>
-    """)
-
-    active_persona_state = gr.State(value=default_persona_id)
-    user_session_state = gr.State(value="hf_user_session")
-    call_active_state = gr.State(value=False)
-
-    with gr.Row():
-        with gr.Column(scale=4):
-            gr.Markdown("### 🌟 Choose Your Persona")
-            persona_dropdown = gr.Radio(
-                choices=[(f"{p.get('name', '')} ({p.get('city', '')})", p.get('id', '')) for p in personas if isinstance(p, dict)],
-                value=default_persona_id,
-                label="Available Personas",
-                interactive=True
-            )
-            
-            profile_display = gr.HTML(value=format_profile_html(default_persona_id))
-
-            with gr.Row():
-                call_button = gr.Button("📞 Call Persona", elem_classes=["call-btn"])
-                hangup_button = gr.Button("🔴 End Call", elem_classes=["hangup-btn"], visible=False)
-            
-            call_status_banner = gr.HTML(value="", visible=False)
-
-            gr.Markdown("---")
-            gr.Markdown("#### 💡 Quick Starters")
-            starter1 = gr.Button("Hey 🙂 How's your day going?")
-            starter2 = gr.Button("What are you passionate about?")
-            starter3 = gr.Button("What kind of music or vibe do you like?")
-
-        with gr.Column(scale=8):
-            chatbot_kwargs = {
-                "value": get_initial_greeting(default_persona_id),
-                "height": 560,
-                "show_label": False,
-                "avatar_images": (
-                    None,
-                    get_avatar_path(persona_map[default_persona_id].get("avatar_url", "")) if default_persona_id in persona_map else None
-                )
-            }
-            if "type" in inspect.signature(gr.Chatbot.__init__).parameters:
-                chatbot_kwargs["type"] = "messages"
-
-            chatbot = gr.Chatbot(**chatbot_kwargs)
-
-            with gr.Row():
-                msg_input = gr.Textbox(
-                    placeholder="Type your message in Hinglish or English...",
-                    show_label=False,
-                    scale=9,
-                    container=False
-                )
-                send_button = gr.Button("Send 💌", scale=2, variant="primary")
-
-            clear_button = gr.Button("🧹 Clear Conversation", size="sm")
-
-    # Call simulation handlers
-    def start_call(p_id):
-        p = persona_map.get(p_id)
-        name = p.get("name", "Persona") if p else "Persona"
-        call_html = f"""
-        <div class="spark-call-box">
-            <h3 style="color: #22c55e; margin: 0 0 6px;">📞 Call Connected with {name}</h3>
-            <p style="color: #94a3b8; margin: 0; font-size: 0.9rem;">Audio link active • Micro-synthesizer audio channel open</p>
-        </div>
-        """
-        return (
-            True,
-            gr.update(visible=False),
-            gr.update(visible=True),
-            gr.update(value=call_html, visible=True)
-        )
-
-    def stop_call():
-        return (
-            False,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            gr.update(value="", visible=False)
-        )
-
-    call_button.click(
-        fn=start_call,
-        inputs=[active_persona_state],
-        outputs=[call_active_state, call_button, hangup_button, call_status_banner]
+# Build Gradio demo (provides ZeroGPU runtime compatibility and fallback UI)
+with gr.Blocks(title="Spark — AI Companions") as demo:
+    gr.HTML(
+        '<iframe id="react-wrapper" src="/" style="position:fixed;top:0;left:0;width:100vw;height:100vh;border:none;z-index:99999;" allow="autoplay; camera; microphone"></iframe>'
     )
 
-    hangup_button.click(
-        fn=stop_call,
-        inputs=[],
-        outputs=[call_active_state, call_button, hangup_button, call_status_banner]
+# Enable CORS for API routes
+demo.app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 1. Register backend API routers
+demo.app.include_router(routes_profiles.router)
+demo.app.include_router(routes_chat.router)
+demo.app.include_router(routes_health.router)
+demo.app.include_router(routes_memories.router)
+
+# 2. Prepend static file mounts & SPA routes
+if assets_dir and assets_dir.exists():
+    demo.app.router.routes.insert(
+        0, Mount("/assets", StaticFiles(directory=str(assets_dir)), name="custom_assets")
     )
 
-    # Change persona handler
-    def on_persona_change(selected_id):
-        p = persona_map.get(selected_id)
-        avatar = get_avatar_path(p.get("avatar_url", "")) if p else None
-        greeting = get_initial_greeting(selected_id)
-        card_html = format_profile_html(selected_id)
-        return (
-            selected_id,
-            card_html,
-            gr.update(value=greeting, avatar_images=(None, avatar)),
-            False,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            gr.update(value="", visible=False)
-        )
-
-    persona_dropdown.change(
-        fn=on_persona_change,
-        inputs=[persona_dropdown],
-        outputs=[active_persona_state, profile_display, chatbot, call_active_state, call_button, hangup_button, call_status_banner]
+if avatars_dir and avatars_dir.exists():
+    demo.app.router.routes.insert(
+        0, Mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="custom_avatars")
     )
 
-    # Chat interaction
-    async def user_send_message(user_msg, history, p_id, user_session):
-        if not user_msg or not user_msg.strip():
-            return history, ""
+def serve_index(request):
+    if static_dir and (static_dir / "index.html").exists():
+        return FileResponse(static_dir / "index.html")
+    return HTMLResponse("<h1>Spark Backend Running</h1><p>Frontend assets not found.</p>")
 
-        # Append user message
-        new_history = list(history) + [{"role": "user", "content": user_msg}]
-        run_zerogpu_task(user_msg)
+def serve_favicon(request):
+    if static_dir:
+        fav = static_dir / "favicon.svg"
+        if fav.exists():
+            return FileResponse(fav)
+    return HTMLResponse("", status_code=204)
 
-        try:
-            db = SessionLocal()
-            reply = await process_chat_message(
-                db=db,
-                profile_id=p_id,
-                user_id=user_session,
-                user_message=user_msg
-            )
-            db.close()
-        except Exception as e:
-            logger.error(f"Chat error: {e}", exc_info=True)
-            reply = "I'm having a little trouble connecting right now, let's chat in just a moment! 🙂"
+demo.app.router.routes.insert(0, Route("/favicon.svg", serve_favicon, methods=["GET"]))
+demo.app.router.routes.insert(0, Route("/chat/{profile_id}", serve_index, methods=["GET"]))
+demo.app.router.routes.insert(0, Route("/settings", serve_index, methods=["GET"]))
+demo.app.router.routes.insert(0, Route("/", serve_index, methods=["GET"]))
 
-        new_history.append({"role": "assistant", "content": reply})
-        return new_history, ""
-
-    msg_input.submit(
-        fn=user_send_message,
-        inputs=[msg_input, chatbot, active_persona_state, user_session_state],
-        outputs=[chatbot, msg_input]
-    )
-
-    send_button.click(
-        fn=user_send_message,
-        inputs=[msg_input, chatbot, active_persona_state, user_session_state],
-        outputs=[chatbot, msg_input]
-    )
-
-    def on_starter_click(starter_text, history, p_id, user_session):
-        return asyncio.run(user_send_message(starter_text, history, p_id, user_session))
-
-    starter1.click(
-        fn=lambda h, p, u: asyncio.run(user_send_message("Hey 🙂 How's your day going?", h, p, u)),
-        inputs=[chatbot, active_persona_state, user_session_state],
-        outputs=[chatbot, msg_input]
-    )
-
-    starter2.click(
-        fn=lambda h, p, u: asyncio.run(user_send_message("What are you passionate about?", h, p, u)),
-        inputs=[chatbot, active_persona_state, user_session_state],
-        outputs=[chatbot, msg_input]
-    )
-
-    starter3.click(
-        fn=lambda h, p, u: asyncio.run(user_send_message("What kind of music or vibe do you like?", h, p, u)),
-        inputs=[chatbot, active_persona_state, user_session_state],
-        outputs=[chatbot, msg_input]
-    )
-
-    clear_button.click(
-        fn=lambda p_id: get_initial_greeting(p_id),
-        inputs=[active_persona_state],
-        outputs=[chatbot]
-    )
+# 3. Client-side SPA fallback for any deep React Router links
+@demo.app.exception_handler(404)
+async def custom_404_handler(request, exc):
+    path = request.url.path
+    api_prefixes = ("/gradio_api", "/profiles", "/chat", "/health", "/memories", "/assets", "/avatars")
+    if not any(path.startswith(prefix) for prefix in api_prefixes):
+        if static_dir and (static_dir / "index.html").exists():
+            return FileResponse(static_dir / "index.html")
+    return HTMLResponse("Not Found", status_code=404)
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["avatars", "frontend/public/avatars"])
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        allowed_paths=[str(avatars_dir)] if avatars_dir else [],
+    )
