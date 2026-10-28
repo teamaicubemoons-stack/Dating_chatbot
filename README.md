@@ -5,7 +5,6 @@ colorFrom: purple
 colorTo: pink
 sdk: docker
 app_port: 7860
-suggested_hardware: cpu-basic
 pinned: false
 ---
 # ✦ Spark — AI Companion Chatbot Platform
