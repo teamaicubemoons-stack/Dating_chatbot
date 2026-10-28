@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import logging
+import inspect
 
 # Ensure backend modules can be imported
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend"))
@@ -276,15 +277,19 @@ with gr.Blocks(css=custom_css, title="Spark — AI Dating & Companion", theme=gr
             starter3 = gr.Button("What kind of music or vibe do you like?")
 
         with gr.Column(scale=8):
-            chatbot = gr.Chatbot(
-                value=get_initial_greeting(default_persona_id),
-                height=560,
-                show_label=False,
-                avatar_images=(
+            chatbot_kwargs = {
+                "value": get_initial_greeting(default_persona_id),
+                "height": 560,
+                "show_label": False,
+                "avatar_images": (
                     None,
                     get_avatar_path(persona_map[default_persona_id].get("avatar_url", "")) if default_persona_id in persona_map else None
                 )
-            )
+            }
+            if "type" in inspect.signature(gr.Chatbot.__init__).parameters:
+                chatbot_kwargs["type"] = "messages"
+
+            chatbot = gr.Chatbot(**chatbot_kwargs)
 
             with gr.Row():
                 msg_input = gr.Textbox(
