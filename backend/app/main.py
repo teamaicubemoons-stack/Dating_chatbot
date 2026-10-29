@@ -135,7 +135,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_health.router)
     app.include_router(routes_memories.router)
 
-    # Check for built frontend in common locations (Docker / Hugging Face Spaces)
+    # Check for built frontend in common locations (Docker / Hugging Face Spaces / Render)
     from pathlib import Path
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
@@ -151,12 +151,23 @@ def create_app() -> FastAPI:
 
     if frontend_dist:
         logger.info("Mounted frontend static files from: %s", frontend_dist)
-        assets_dir = frontend_dist / "assets"
-        if assets_dir.exists():
+        possible_asset_paths = [
+            frontend_dist / "assets",
+            base_dir / "static" / "assets",
+            base_dir.parent / "frontend" / "dist" / "assets",
+        ]
+        assets_dir = next((p for p in possible_asset_paths if p.exists()), None)
+        if assets_dir:
             app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
-        avatars_dir = frontend_dist / "avatars"
-        if avatars_dir.exists():
+        possible_avatar_paths = [
+            frontend_dist / "avatars",
+            base_dir.parent / "avatars",
+            base_dir / "static" / "avatars",
+            base_dir.parent / "frontend" / "public" / "avatars",
+        ]
+        avatars_dir = next((p for p in possible_avatar_paths if p.exists()), None)
+        if avatars_dir:
             app.mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
 
         @app.get("/{full_path:path}", include_in_schema=False)
