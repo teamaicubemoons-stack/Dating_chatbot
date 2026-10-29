@@ -122,20 +122,26 @@ with gr.Blocks(title="Spark — AI Companions") as demo:
         """
     )
 
-# Enable CORS for all API calls
+# Enable CORS for all API calls (including Render, local, and custom domains)
 demo.app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 1. Mount backend API routers under /gradio_api (bypasses HF 308 redirect)
+# 1. Mount backend API routers under /gradio_api and /api (bypasses HF 308 redirect)
 demo.app.include_router(routes_profiles.router, prefix="/gradio_api")
 demo.app.include_router(routes_chat.router, prefix="/gradio_api")
 demo.app.include_router(routes_health.router, prefix="/gradio_api")
 demo.app.include_router(routes_memories.router, prefix="/gradio_api")
+
+demo.app.include_router(routes_profiles.router, prefix="/api")
+demo.app.include_router(routes_chat.router, prefix="/api")
+demo.app.include_router(routes_health.router, prefix="/api")
+demo.app.include_router(routes_memories.router, prefix="/api")
 
 # Also include them without prefix for local compatibility
 demo.app.include_router(routes_profiles.router)
@@ -171,6 +177,7 @@ def serve_react_ui(full_path: str = ""):
 
 if __name__ == "__main__":
     demo.launch(
+        _app=demo.app,
         server_name="0.0.0.0",
         server_port=7860,
         allowed_paths=[str(avatars_dir), str(frontend_dist)]

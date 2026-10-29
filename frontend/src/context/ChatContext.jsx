@@ -49,6 +49,8 @@ export function ChatProvider({ children }) {
    * Called when navigating to a chat page.
    */
   const activeTurnRef = useRef({});
+  const messageQueueRef = useRef({});
+  const isProcessingQueueRef = useRef({});
 
   /**
    * Load conversation history from the backend for a given profile.
@@ -87,30 +89,99 @@ export function ChatProvider({ children }) {
   }, [userId]);
 
   /**
+   * Drain and process message queue sequentially per companion profile.
+   * Allows user to send multiple messages in a row without UI lock (WhatsApp-style).
+   */
+  const drainQueue = useCallback(async (profileId) => {
+    if (isProcessingQueueRef.current[profileId]) return;
+    isProcessingQueueRef.current[profileId] = true;
+
+    try {
+      while ((messageQueueRef.current[profileId] || []).length > 0) {
+        const item = messageQueueRef.current[profileId].shift();
+        const text = item.text;
+
+        setPendingProfileId(profileId);
+
+        // Natural short reading delay based on user message length
+        const wordCount = text.split(/\s+/).filter(Boolean).length;
+        const readDelayMs = Math.min(1000, Math.max(400, 300 + wordCount * 30));
+
+        const requestPromise = sendMessage(profileId, userId, text);
+        await new Promise((resolve) => setTimeout(resolve, readDelayMs));
+
+        setTypingProfileId(profileId);
+
+        try {
+          const response = await requestPromise;
+          const rawReply = (response?.reply || '').trim();
+
+          if (rawReply) {
+            // Typing delay: natural short duration
+            const typingDelayMs = Math.min(1800, Math.max(500, rawReply.length * 15));
+            await new Promise((resolve) => setTimeout(resolve, typingDelayMs));
+
+            // Extract bubbles (support ||| and multi-line breaks)
+            let bubbles = [];
+            if (rawReply.includes('|||')) {
+              bubbles = rawReply.split('|||').map((s) => s.replace(/\|\|\|/g, '').trim()).filter(Boolean);
+            } else if (rawReply.includes('\n\n')) {
+              bubbles = rawReply.split('\n\n').map((s) => s.replace(/\|\|\|/g, '').trim()).filter(Boolean);
+            } else {
+              bubbles = [rawReply.replace(/\|\|\|/g, '').trim()];
+            }
+            if (bubbles.length === 0) bubbles = [rawReply.replace(/\|\|\|/g, '').trim()];
+
+            for (let i = 0; i < bubbles.length; i++) {
+              const bubbleText = bubbles[i];
+              const aiMsg = {
+                id: `ai-${Date.now()}-${i}`,
+                role: 'assistant',
+                content: bubbleText,
+                timestamp: new Date().toISOString(),
+              };
+
+              setMessagesByProfile((prev) => ({
+                ...prev,
+                [profileId]: [...(prev[profileId] || []), aiMsg],
+              }));
+
+              if (i < bubbles.length - 1) {
+                setTypingProfileId(profileId);
+                await new Promise((resolve) => setTimeout(resolve, 400));
+              }
+            }
+          }
+          setLastFailedMessage(null);
+        } catch (err) {
+          setLastFailedMessage({ profileId, messageText: text });
+          setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
+        } finally {
+          setTypingProfileId((current) => (current === profileId ? null : current));
+          setPendingProfileId((current) => (current === profileId ? null : current));
+        }
+      }
+    } finally {
+      isProcessingQueueRef.current[profileId] = false;
+      setTypingProfileId((current) => (current === profileId ? null : current));
+      setPendingProfileId((current) => (current === profileId ? null : current));
+    }
+  }, [userId]);
+
+  /**
    * Send a message to the backend and append both the user message
    * and the AI reply bubbles to local state.
-   *
-   * Flow:
-   * 1. User message delivered instantly. Cancels any unfinished bubbles from previous turn.
-   * 2. Natural READ DELAY: Companion first sees and reads message (no typing indicator yet).
-   * 3. TYPING PHASE: Companion starts typing (dots bounce for natural duration).
-   * 4. Multi-bubble replies delivered sequentially. If user sends a new message while
-   *    bubbles are still being shown, remaining bubbles are cancelled immediately.
    */
   const sendChatMessage = useCallback(async (profileId, messageText) => {
     const text = messageText.trim();
-    if (!text || typingProfileId === profileId || pendingProfileId === profileId) return;
+    if (!text) return;
 
     setError(null);
     setLastFailedMessage(null);
 
-    // Cancel any ongoing bubble sequence for this profile when new message is sent
-    const currentTurnToken = (activeTurnRef.current[profileId] || 0) + 1;
-    activeTurnRef.current[profileId] = currentTurnToken;
-
-    // Append user message immediately (optimistic UI)
+    // 1. Immediately append user message to local state (optimistic UI)
     const userMsg = {
-      id: `user-${Date.now()}`,
+      id: `user-${Date.now()}-${Math.random()}`,
       role: 'user',
       content: text,
       timestamp: new Date().toISOString(),
@@ -121,90 +192,14 @@ export function ChatProvider({ children }) {
       [profileId]: [...(prev[profileId] || []), userMsg],
     }));
 
-    // Mark as pending/reading
-    setPendingProfileId(profileId);
-
-    // Calculate natural reading delay based on words in user's message
-    const wordCount = text.split(/\s+/).filter(Boolean).length;
-    const readDelayMs = Math.min(2200, Math.max(1000, 850 + wordCount * 65 + Math.random() * 300));
-
-    // Start API request in parallel
-    const requestPromise = sendMessage(profileId, userId, text);
-
-    // Wait for reading delay before starting typing indicator
-    await new Promise((resolve) => setTimeout(resolve, readDelayMs));
-
-    // Check if cancelled before typing starts
-    if (activeTurnRef.current[profileId] !== currentTurnToken) return;
-
-    // Turn ON typing indicator after reading
-    setTypingProfileId(profileId);
-
-    try {
-      const response = await requestPromise;
-      if (activeTurnRef.current[profileId] !== currentTurnToken) return;
-
-      const rawReply = (response?.reply || '').trim();
-
-      if (rawReply) {
-        // Typing delay of 1-4 seconds based on reply length
-        const typingDelayMs = Math.min(4000, Math.max(1000, rawReply.length * 28));
-        await new Promise((resolve) => setTimeout(resolve, typingDelayMs));
-
-        if (activeTurnRef.current[profileId] !== currentTurnToken) return;
-
-        // Extract bubbles (delimited by '|||' or newlines), stripping '|||' from user display
-        let bubbles = [];
-        if (rawReply.includes('|||')) {
-          bubbles = rawReply.split('|||').map((s) => s.replace(/\|\|\|/g, '').trim()).filter(Boolean);
-        } else {
-          bubbles = rawReply.split('\n').map((s) => s.replace(/\|\|\|/g, '').trim()).filter(Boolean);
-        }
-        if (bubbles.length === 0) bubbles = [rawReply.replace(/\|\|\|/g, '').trim()];
-
-        for (let i = 0; i < bubbles.length; i++) {
-          // If user sends a new message while bubbles are still being shown, cancel the rest!
-          if (activeTurnRef.current[profileId] !== currentTurnToken) {
-            break;
-          }
-
-          const bubbleText = bubbles[i];
-          const aiMsg = {
-            id: `ai-${Date.now()}-${i}`,
-            role: 'assistant',
-            content: bubbleText,
-            timestamp: new Date().toISOString(),
-          };
-
-          setMessagesByProfile((prev) => ({
-            ...prev,
-            [profileId]: [...(prev[profileId] || []), aiMsg],
-          }));
-
-          if (i < bubbles.length - 1) {
-            setTypingProfileId(profileId);
-            const gapDelayMs = Math.min(1500, Math.max(800, bubbles[i + 1].length * 25));
-            await new Promise((resolve) => setTimeout(resolve, gapDelayMs));
-            if (activeTurnRef.current[profileId] !== currentTurnToken) {
-              break;
-            }
-          }
-        }
-      }
-
-      setLastFailedMessage(null);
-    } catch (err) {
-      if (activeTurnRef.current[profileId] === currentTurnToken) {
-        setLastFailedMessage({ profileId, messageText: text });
-        setError(err.message || 'Reply aane mein thoda time lag gaya. Ek baar phir try karoge?');
-      }
-    } finally {
-      if (activeTurnRef.current[profileId] === currentTurnToken) {
-        setTypingProfileId((current) => (current === profileId ? null : current));
-        setPendingProfileId((current) => (current === profileId ? null : current));
-      }
+    // 2. Push message into queue & drain sequentially
+    if (!messageQueueRef.current[profileId]) {
+      messageQueueRef.current[profileId] = [];
     }
-  }, [userId, typingProfileId, pendingProfileId]);
+    messageQueueRef.current[profileId].push({ text });
+
+    drainQueue(profileId);
+  }, [drainQueue]);
 
   /**
    * Retry sending the last failed message without adding a duplicate user bubble.

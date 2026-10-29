@@ -1215,13 +1215,18 @@ def arrange_and_format_response(
         is_care_mode=is_care_mode,
     )
 
-    # 5. Structure variety: do NOT force a newline split on single-line replies!
-    # If force_single_line is requested, join any newlines into a single line
-    if force_single_line:
-        text = text.replace("\n", " ")
-
-    # Strip trailing formal full stop (.) and commas at end of lines
-    raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in text.split("\n") if l.strip()]
+    # 5. Structure variety & clean line breaks:
+    # If the response is a single continuous string with multiple distinct sentences or questions,
+    # split at sentence boundaries so distinct thoughts appear on new lines (WhatsApp style)
+    if "\n" not in text and len(text.split()) > 7:
+        split_pattern = r"(?<=[?!])\s+(?=[A-Za-z\u0900-\u097F])|(?<=[.।])\s+(?=[A-Z\u0900-\u097F])"
+        sentence_parts = re.split(split_pattern, text)
+        if len(sentence_parts) > 1:
+            raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in sentence_parts if l.strip()]
+        else:
+            raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in text.split("\n") if l.strip()]
+    else:
+        raw_lines = [re.sub(r",\s*$", "", l.strip()).rstrip(".") for l in text.split("\n") if l.strip()]
 
     # Clean dangling fragments & stitch mid-sentence breaks into complete sentences
     valid_lines = clean_and_assemble_lines(raw_lines)
@@ -1235,7 +1240,8 @@ def arrange_and_format_response(
         else:
             return "what happened, all good?"
 
-    if force_single_line:
+    # Only collapse to a single line if force_single_line was requested AND the text is genuinely very short (<= 6 words)
+    if force_single_line and len(" ".join(valid_lines).split()) <= 6:
         return " ".join(valid_lines)
 
-    return "\n".join(valid_lines[:2])
+    return "\n".join(valid_lines[:3])

@@ -46,7 +46,7 @@ from app.chat.response_validator import (
     sanitize_emojis,
 )
 from app.chat.own_life_engine import should_inject_own_life, get_own_life_seed
-from app.chat.prompt_builder import build_final_prompt, build_direct_prompt, is_low_energy_response
+from app.chat.prompt_builder import build_final_prompt, build_direct_prompt, is_low_energy_response, is_simple_greeting
 from app.llm.llm_router import route_and_generate
 from app.utils.error_handler import PersonaNotFoundError, LLMClientError
 
@@ -192,10 +192,10 @@ async def process_chat_message(
     last_bot_emoji = recent_ctx.get("last_bot_emoji", "")
     allow_emoji = (turns_since_last_emoji >= 2) and (not is_care_mode)
 
-    # Own life engine: share real daily detail in first 4-5 msgs, then every ~10 msgs
+    # Own life engine: share real daily detail in first 4-5 msgs, then every ~10 msgs (never on casual greetings)
     last_self_share_at = recent_ctx.get("last_self_share_at", 0)
     own_life_seed = None
-    if not is_care_mode and should_inject_own_life(total_messages, last_self_share_at):
+    if not is_care_mode and not is_simple_greeting(user_message) and should_inject_own_life(total_messages, last_self_share_at):
         try:
             from app.utils.time_context import get_runtime_time_context
             rt_ctx = get_runtime_time_context()
