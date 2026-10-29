@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
-  base: './',
+  base: '/',
   plugins: [react()],
   server: {
     host: true, // Exposes Vite dev server to local network (LAN)
