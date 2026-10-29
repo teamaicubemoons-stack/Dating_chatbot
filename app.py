@@ -125,58 +125,65 @@ with gr.Blocks(title="Spark — AI Companions") as demo:
         """
     )
 
-# Enable CORS for all API calls (including Render, local, and custom domains)
-demo.app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_origin_regex=r"^https?://.*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from gradio.routes import App
 
-# 1. Mount backend API routers under /gradio_api and /api (bypasses HF 308 redirect)
-demo.app.include_router(routes_profiles.router, prefix="/gradio_api")
-demo.app.include_router(routes_chat.router, prefix="/gradio_api")
-demo.app.include_router(routes_health.router, prefix="/gradio_api")
-demo.app.include_router(routes_memories.router, prefix="/gradio_api")
+def configure_fastapi_app(app):
+    # Enable CORS for all API calls (including Render, local, and custom domains)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_origin_regex=r"^https?://.*",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-demo.app.include_router(routes_profiles.router, prefix="/api")
-demo.app.include_router(routes_chat.router, prefix="/api")
-demo.app.include_router(routes_health.router, prefix="/api")
-demo.app.include_router(routes_memories.router, prefix="/api")
+    # Mount backend API routers under root, /api, and /gradio_api
+    for prefix in ["", "/api", "/gradio_api"]:
+        app.include_router(routes_profiles.router, prefix=prefix)
+        app.include_router(routes_chat.router, prefix=prefix)
+        app.include_router(routes_health.router, prefix=prefix)
+        app.include_router(routes_memories.router, prefix=prefix)
 
-# Also include them without prefix for local compatibility
-demo.app.include_router(routes_profiles.router)
-demo.app.include_router(routes_chat.router)
-demo.app.include_router(routes_health.router)
-demo.app.include_router(routes_memories.router)
+    # Mount static assets and avatars
+    if assets_dir.exists():
+        app.mount("/gradio_api/assets", StaticFiles(directory=str(assets_dir)), name="gradio_assets")
+        app.router.routes.insert(0, Mount("/assets", StaticFiles(directory=str(assets_dir)), name="custom_assets"))
 
-# 2. Mount static assets and avatars under /gradio_api
-if assets_dir.exists():
-    demo.app.mount("/gradio_api/assets", StaticFiles(directory=str(assets_dir)), name="gradio_assets")
-    demo.app.router.routes.insert(0, Mount("/assets", StaticFiles(directory=str(assets_dir)), name="custom_assets"))
+    if avatars_dir.exists():
+        app.mount("/gradio_api/avatars", StaticFiles(directory=str(avatars_dir)), name="gradio_avatars")
+        app.router.routes.insert(0, Mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="custom_avatars"))
 
-if avatars_dir.exists():
-    demo.app.mount("/gradio_api/avatars", StaticFiles(directory=str(avatars_dir)), name="gradio_avatars")
-    demo.app.router.routes.insert(0, Mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="custom_avatars"))
+    @app.get("/gradio_api/favicon.svg")
+    def serve_favicon():
+        fav = frontend_dist / "favicon.svg"
+        if fav.exists():
+            return FileResponse(fav)
+        return HTMLResponse("", status_code=204)
 
-# 3. Serve React SPA UI at /gradio_api/ui and fallback subpaths
-@demo.app.get("/gradio_api/favicon.svg")
-def serve_favicon():
-    fav = frontend_dist / "favicon.svg"
-    if fav.exists():
-        return FileResponse(fav)
-    return HTMLResponse("", status_code=204)
+    @app.get("/gradio_api/ui", response_class=HTMLResponse)
+    @app.get("/gradio_api/ui/{full_path:path}", response_class=HTMLResponse)
+    def serve_react_ui(full_path: str = ""):
+        run_zerogpu_task()
+        idx = frontend_dist / "index.html"
+        if idx.exists():
+            return FileResponse(idx)
+        return HTMLResponse("<h1>Spark React App Building... Please refresh</h1>")
 
-@demo.app.get("/gradio_api/ui", response_class=HTMLResponse)
-@demo.app.get("/gradio_api/ui/{full_path:path}", response_class=HTMLResponse)
-def serve_react_ui(full_path: str = ""):
-    run_zerogpu_task()
-    idx = frontend_dist / "index.html"
-    if idx.exists():
-        return FileResponse(idx)
-    return HTMLResponse("<h1>Spark React App Building... Please refresh</h1>")
+    return app
+
+# Patch App.create_app so Gradio preserves our custom API routers and CORS on launch
+_orig_create_app = App.create_app
+
+@staticmethod
+def _custom_create_app(blocks, *args, **kwargs):
+    app = _orig_create_app(blocks, *args, **kwargs)
+    return configure_fastapi_app(app)
+
+App.create_app = _custom_create_app
+
+# Also configure on demo.app directly for any pre-launch access
+configure_fastapi_app(demo.app)
 
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
