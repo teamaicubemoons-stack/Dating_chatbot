@@ -19,7 +19,7 @@ Shutdown sequence:
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config.logging_config import setup_logging
@@ -138,7 +138,8 @@ def create_app() -> FastAPI:
     # Check for built frontend in common locations (Docker / Hugging Face Spaces / Render)
     from pathlib import Path
     from fastapi.staticfiles import StaticFiles
-    from fastapi.responses import FileResponse
+    from fastapi.responses import FileResponse, HTMLResponse
+    from starlette.routing import Mount
 
     base_dir = Path(__file__).resolve().parent.parent
     possible_dist_paths = [
@@ -149,6 +150,39 @@ def create_app() -> FastAPI:
     ]
     frontend_dist = next((p for p in possible_dist_paths if (p / "index.html").exists()), None)
 
+    possible_avatar_paths = [
+        base_dir.parent / "avatars",
+        base_dir / "static" / "avatars",
+        (frontend_dist / "avatars") if frontend_dist else None,
+        base_dir.parent / "frontend" / "public" / "avatars",
+        Path("/app/avatars"),
+        Path("/home/user/app/avatars"),
+    ]
+    possible_avatar_paths = [p for p in possible_avatar_paths if p and p.exists()]
+    avatars_dir = possible_avatar_paths[0] if possible_avatar_paths else None
+
+    if avatars_dir:
+        app.router.routes.insert(0, Mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars_top"))
+        app.router.routes.insert(0, Mount("/gradio_api/avatars", StaticFiles(directory=str(avatars_dir)), name="gradio_avatars_top"))
+
+    @app.get("/avatars/{filename:path}", include_in_schema=False)
+    @app.get("/gradio_api/avatars/{filename:path}", include_in_schema=False)
+    def serve_avatar(filename: str):
+        for candidate_dir in possible_avatar_paths:
+            f = candidate_dir / filename
+            if f.is_file():
+                return FileResponse(f)
+        return HTMLResponse("Avatar not found", status_code=404)
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    @app.get("/favicon.ico", include_in_schema=False)
+    def serve_favicon():
+        if frontend_dist:
+            fav = frontend_dist / "favicon.svg"
+            if fav.exists():
+                return FileResponse(fav)
+        return HTMLResponse("", status_code=204)
+
     if frontend_dist:
         logger.info("Mounted frontend static files from: %s", frontend_dist)
         possible_asset_paths = [
@@ -158,17 +192,16 @@ def create_app() -> FastAPI:
         ]
         assets_dir = next((p for p in possible_asset_paths if p.exists()), None)
         if assets_dir:
-            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+            app.router.routes.insert(0, Mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets_top"))
 
-        possible_avatar_paths = [
-            frontend_dist / "avatars",
-            base_dir.parent / "avatars",
-            base_dir / "static" / "avatars",
-            base_dir.parent / "frontend" / "public" / "avatars",
-        ]
-        avatars_dir = next((p for p in possible_avatar_paths if p.exists()), None)
-        if avatars_dir:
-            app.mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="avatars")
+        @app.get("/chat/{profile_id}", response_class=HTMLResponse, include_in_schema=False)
+        @app.get("/chat/{profile_id}/", response_class=HTMLResponse, include_in_schema=False)
+        @app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
+        @app.get("/settings/", response_class=HTMLResponse, include_in_schema=False)
+        @app.get("/about", response_class=HTMLResponse, include_in_schema=False)
+        @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+        def serve_spa_page(profile_id: str = ""):
+            return FileResponse(frontend_dist / "index.html")
 
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(full_path: str):
@@ -176,6 +209,15 @@ def create_app() -> FastAPI:
             if full_path and file_path.is_file():
                 return FileResponse(file_path)
             return FileResponse(frontend_dist / "index.html")
+
+        @app.exception_handler(404)
+        async def spa_404_handler(request: Request, exc):
+            accept = request.headers.get("accept", "")
+            if "text/html" in accept:
+                idx = frontend_dist / "index.html"
+                if idx.is_file():
+                    return FileResponse(idx)
+            return HTMLResponse("Not Found", status_code=404)
     else:
         @app.get("/", tags=["root"])
         def root():

@@ -35,6 +35,7 @@ if "app" in sys.modules and not hasattr(sys.modules["app"], "__path__"):
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Request, HTTPException
 from starlette.routing import Mount, Route
 import gradio as gr
 
@@ -89,7 +90,10 @@ assets_dir = frontend_dist / "assets"
 possible_avatar_paths = [
     base_dir / "avatars",
     backend_dir / "static" / "avatars",
+    frontend_dist / "avatars",
     base_dir / "frontend" / "public" / "avatars",
+    Path("/app/avatars"),
+    Path("/home/user/app/avatars"),
 ]
 avatars_dir = next((p for p in possible_avatar_paths if p.exists()), base_dir / "avatars")
 
@@ -145,30 +149,62 @@ def configure_fastapi_app(app):
         app.include_router(routes_health.router, prefix=prefix)
         app.include_router(routes_memories.router, prefix=prefix)
 
-    # Mount static assets and avatars
+    # Mount static assets and avatars at the front of routes so they take precedence
     if assets_dir.exists():
-        app.mount("/gradio_api/assets", StaticFiles(directory=str(assets_dir)), name="gradio_assets")
+        app.router.routes.insert(0, Mount("/gradio_api/assets", StaticFiles(directory=str(assets_dir)), name="gradio_assets"))
         app.router.routes.insert(0, Mount("/assets", StaticFiles(directory=str(assets_dir)), name="custom_assets"))
 
     if avatars_dir.exists():
-        app.mount("/gradio_api/avatars", StaticFiles(directory=str(avatars_dir)), name="gradio_avatars")
+        app.router.routes.insert(0, Mount("/gradio_api/avatars", StaticFiles(directory=str(avatars_dir)), name="gradio_avatars"))
         app.router.routes.insert(0, Mount("/avatars", StaticFiles(directory=str(avatars_dir)), name="custom_avatars"))
 
-    @app.get("/gradio_api/favicon.svg")
+    # Dedicated direct endpoints for avatars to guarantee 100% reliability
+    @app.get("/gradio_api/avatars/{filename:path}", include_in_schema=False)
+    @app.get("/avatars/{filename:path}", include_in_schema=False)
+    def serve_avatar_image(filename: str):
+        for candidate_dir in possible_avatar_paths:
+            f = candidate_dir / filename
+            if f.is_file():
+                return FileResponse(f)
+        raise HTTPException(status_code=404, detail="Avatar image not found")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    @app.get("/favicon.ico", include_in_schema=False)
+    @app.get("/gradio_api/favicon.svg", include_in_schema=False)
+    @app.get("/gradio_api/favicon.ico", include_in_schema=False)
     def serve_favicon():
         fav = frontend_dist / "favicon.svg"
         if fav.exists():
             return FileResponse(fav)
         return HTMLResponse("", status_code=204)
 
+    # Direct SPA routes for browser reload / direct links
+    @app.get("/chat/{profile_id}", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/chat/{profile_id}/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/settings", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/settings/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/about", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/about/", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/privacy/", response_class=HTMLResponse, include_in_schema=False)
     @app.get("/gradio_api/ui", response_class=HTMLResponse)
     @app.get("/gradio_api/ui/{full_path:path}", response_class=HTMLResponse)
-    def serve_react_ui(full_path: str = ""):
+    def serve_react_ui(full_path: str = "", profile_id: str = ""):
         run_zerogpu_task()
         idx = frontend_dist / "index.html"
         if idx.exists():
             return FileResponse(idx)
         return HTMLResponse("<h1>Spark React App Building... Please refresh</h1>")
+
+    # Catch-all 404 handler for any HTML SPA page reload
+    @app.exception_handler(404)
+    async def spa_404_handler(request: Request, exc):
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept:
+            idx = frontend_dist / "index.html"
+            if idx.is_file():
+                return FileResponse(idx)
+        return HTMLResponse("Not Found", status_code=404)
 
     return app
 

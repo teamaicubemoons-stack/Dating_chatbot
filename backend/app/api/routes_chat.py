@@ -28,9 +28,34 @@ from app.models.schemas import (
 )
 from app.utils.error_handler import PersonaNotFoundError, LLMClientError
 from app.api.dependencies import get_db
+from fastapi.responses import FileResponse, HTMLResponse
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+@router.get("/{profile_id}", include_in_schema=False)
+@router.get("/{profile_id}/", include_in_schema=False)
+def serve_chat_page(profile_id: str):
+    """
+    Handle GET /chat/{profile_id} for browser page refreshes and direct links.
+    Serves the React frontend SPA so React Router can render the ChatPage.
+    """
+    base_dir = Path(__file__).resolve().parent.parent.parent
+    possible_dist_paths = [
+        base_dir.parent / "frontend" / "dist",
+        base_dir / "static",
+        base_dir / "frontend" / "dist",
+        base_dir.parent / "static",
+        Path("/app/frontend/dist"),
+        Path("/home/user/app/frontend/dist"),
+    ]
+    for dist in possible_dist_paths:
+        idx = dist / "index.html"
+        if idx.is_file():
+            return FileResponse(idx)
+    return HTMLResponse("<h1>Spark Companion — Loading...</h1>")
 
 
 @router.post("/{profile_id}", response_model=ChatResponse)

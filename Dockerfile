@@ -33,6 +33,8 @@ RUN pip install --no-cache-dir --user -r backend/requirements.txt
 
 # Copy backend application
 COPY --chown=user:user backend/ ./backend/
+COPY --chown=user:user avatars/ ./avatars/
+COPY --chown=user:user avatars/ ./backend/static/avatars/
 
 # Copy built frontend assets
 COPY --chown=user:user --from=frontend-builder /app/frontend/dist ./frontend/dist
