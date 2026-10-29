@@ -42,8 +42,7 @@ export default function ChatWindow({ profile }) {
     inputRef.current?.focus();
   }, [profile.id]);
 
-  // Let users start typing immediately, like ChatGPT, without first clicking
-  // the composer. Do not steal focus from another text field or control.
+  // Focus composer when user starts typing on keyboard
   useEffect(() => {
     const focusComposerForTyping = (event) => {
       const target = event.target;
@@ -55,31 +54,24 @@ export default function ChatWindow({ profile }) {
       );
       const isPrintableKey = event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey;
 
-      if (!isEditableTarget && isPrintableKey && !isBusy) {
+      if (!isEditableTarget && isPrintableKey) {
         inputRef.current?.focus();
       }
     };
 
     window.addEventListener('keydown', focusComposerForTyping);
     return () => window.removeEventListener('keydown', focusComposerForTyping);
-  }, [isBusy]);
+  }, []);
 
-  // Response generation disables the composer; restore focus as soon as it is
-  // available so the next message can be typed without another click.
-  useEffect(() => {
-    if (!isBusy) {
-      inputRef.current?.focus();
-    }
-  }, [isBusy]);
-
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(() => {
     const text = input.trim();
-    if (!text || isBusy) return;
+    if (!text) return;
     setInput('');
     clearError();
-    await sendChatMessage(profile.id, text);
+    // Fire-and-forget: queue handles sequencing — user can keep typing immediately
+    sendChatMessage(profile.id, text);
     inputRef.current?.focus();
-  }, [input, isBusy, sendChatMessage, profile.id, clearError]);
+  }, [input, sendChatMessage, profile.id, clearError]);
 
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -216,14 +208,13 @@ export default function ChatWindow({ profile }) {
           placeholder={`Message ${profile.name}…`}
           rows={1}
           maxLength={4000}
-          disabled={isBusy}
           aria-label={`Type a message to ${profile.name}`}
         />
         <button
           id={`send-btn-${profile.id}`}
           className="chat-window__send-btn"
           onClick={handleSend}
-          disabled={!input.trim() || isBusy}
+          disabled={!input.trim()}
           aria-label="Send message"
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

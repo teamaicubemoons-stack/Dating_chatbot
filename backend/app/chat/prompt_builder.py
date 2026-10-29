@@ -356,7 +356,27 @@ _USER_REPEAT_OR_IRRITATION_PATTERNS = re.compile(
 )
 
 
+# Pattern to detect simple casual greetings (hy, hyy, hello, hey, etc.)
+_SIMPLE_GREETING_PATTERNS = re.compile(
+    r"^(?:"
+    r"h(?:[eyia]+|lo+)|hello+|heyy+|hyy+|hii+|namaste+|"
+    r"wass?up|sup|yo|gm|gn|"
+    r"good\s+(?:morning|afternoon|evening|night)|"
+    r"k(?:[ey]+)se\s+ho|kaise\s+ho|kya\s+h(?:aa|a)l\s+h(?:ai)?|"
+    r"aur\s+batao|kya\s+scene\s+hai|kya\s+chal\s+raha\s+hai"
+    r")[!\s.?~]*$",
+    re.IGNORECASE,
+)
+
 MAX_CONTEXT_TOKENS = 16000
+
+
+def is_simple_greeting(text: Optional[str]) -> bool:
+    """Return True if user input is purely a casual greeting with no questions or tasks."""
+    if not text:
+        return False
+    stripped = text.strip()
+    return bool(_SIMPLE_GREETING_PATTERNS.match(stripped))
 
 
 def is_user_at_work_message(text: str) -> bool:
@@ -1153,6 +1173,7 @@ Persona: arre sorry sorry, tu bata chuka tha 😂 ghar jaake kya, bas so jayega?
      * Real WhatsApp/dating app texts are punchy: aim for 8-15 words per message!
      * Don't write 2-3 line paragraphs.
      * Start naturally with lowercase or simple casual opener, avoid excessive exclamation marks ('!').
+      * MULTI-LINE FORMAT RULE (CRITICAL): When you have two separate thoughts, split them onto TWO separate lines using a newline (\n). NEVER cram two thoughts into one long run-on sentence. WhatsApp style = short bursts, one thought per line. GOOD: 'haha sach me\nwaise tumhara plan kya hai' | BAD: 'haha sach me waise tumhara plan kya hai aaj evening mein'
 
 --- Example 8 (Designer vs Developer playful nok-jhok):
 User: mai job krta hu engineer hu
@@ -1252,6 +1273,15 @@ def build_final_prompt(
     if history_turns <= 1:
         stage_reminder = (
             "\n[CONVERSATION START: Keep your first greeting warm, natural, and under 8-12 words!]"
+        )
+    if is_simple_greeting(user_message):
+        stage_reminder += (
+            "\n[CASUAL GREETING DIRECTIVE - CRITICAL: The user sent a very short casual greeting ('" + user_message.strip() + "'). "
+            "THIS IS NOT AN INVITATION FOR A LONG RESPONSE. "
+            "Reply with ONLY 1 SHORT LINE, maximum 5-8 words, like someone replying on WhatsApp. "
+            "GOOD EXAMPLES: 'heyy', 'hyy kya scene hai', 'heyy! kya chal rha'. "
+            "STRICTLY FORBIDDEN: daily routines, schedules, backstory, life updates, or multiple questions. "
+            "Do NOT write more than ONE SHORT LINE. JUST ONE SHORT PUNCHY REPLY.]"
         )
     else:
         # Repetition suppression check
@@ -1952,6 +1982,8 @@ def build_direct_prompt(
         "CASUAL TEXTING PUNCTUATION & GEN-Z FORMAT: Text like a real 20-something chatting on WhatsApp or Instagram. DO NOT worry about grammar or symbols: no formal dashes/hyphens (—, -), no semicolons (;), and minimal commas. DO NOT put a formal full stop / period (.) at the very end of your messages. Write fluidly without forced line splitting.",
         "COMPLETE SENTENCES: Every sentence or thought you text must be 100% complete. Never leave a sentence hanging half-way or cut off.",
         "NO REPETITIVE PROFESSION TALK: Never bring up your profession unless the user specifically asks about it right now! Talk about normal relatable moments like a real person.",
+        "CASUAL GREETING RULE (CRITICAL): When the user sends a simple greeting like 'hy', 'hyy', 'hello', 'hey', 'hii', or 'kese ho', NEVER volunteer an unasked life story, beverage update (e.g. 'cold brew pi rahi hu'), or daily routine! Match their casual greeting naturally in 1 short sentence (under 6-10 words, e.g. 'Hey! Kaise ho?').",
+        "LINE BREAKS & CLEAN TEXTING (NO RUN-ON MONOLITHS): When expressing multiple distinct thoughts, reactions, or follow-up questions, separate them onto distinct lines with newline characters (\n). Never jam multiple different thoughts or questions into one continuous run-on sentence.",
     ]
 
     # Persona Identity & Enriched Character
@@ -2036,8 +2068,17 @@ def build_direct_prompt(
     # ═════════════════════════════════════════════════════════════════════════
     dynamic_parts: List[str] = []
 
-    # Care Mode directive takes highest priority
     user_distress = is_user_in_distress(user_message)
+
+    # Casual greeting directive takes precedence over unprompted stories
+    if is_simple_greeting(user_message) and not (is_care_mode or user_distress):
+        dynamic_parts.append(
+            "[CASUAL GREETING DIRECTIVE — CRITICAL]: The user just sent a simple casual greeting ('" + user_message.strip() + "'). "
+            "1. Strictly DO NOT dump an unprompted life update, schedule, routine, or what you are eating/drinking (e.g. NEVER volunteer 'main cold brew leke baithi hu' or daily chores unasked!). "
+            "2. Keep your response brief, warm, natural, and matching their energy (1 short sentence, 4 to 8 words max, e.g. 'Hey! Kaise ho?', 'Hyy, kya chal raha hai?', 'Hey! Sab theek?')."
+        )
+
+    # Care Mode directive takes highest priority
     if is_care_mode or user_distress:
         dynamic_parts.append(
             "[ACTIVE CARE MODE DIRECTIVE — CRITICAL]: The user is unwell, in pain, stressed, or having a bad day ('" + user_message.strip()[:100] + "'). "
