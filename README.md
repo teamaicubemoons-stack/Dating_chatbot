@@ -7,6 +7,7 @@ sdk: gradio
 sdk_version: 5.9.1
 app_file: app.py
 pinned: false
+# Updated: 2026-10-29 restart trigger
 ---
 # ✦ Spark — AI Companion Chatbot Platform
 
