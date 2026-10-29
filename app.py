@@ -3,6 +3,9 @@ import sys
 import logging
 from pathlib import Path
 
+# Disable ChromaDB telemetry errors
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 # ZeroGPU support for Hugging Face Spaces
 try:
     import spaces
@@ -175,10 +178,11 @@ def serve_react_ui(full_path: str = ""):
         return FileResponse(idx)
     return HTMLResponse("<h1>Spark React App Building... Please refresh</h1>")
 
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+
 if __name__ == "__main__":
     demo.launch(
-        _app=demo.app,
         server_name="0.0.0.0",
         server_port=7860,
-        allowed_paths=[str(avatars_dir), str(frontend_dist)]
+        allowed_paths=[str(avatars_dir)] if avatars_dir.exists() else []
     )
