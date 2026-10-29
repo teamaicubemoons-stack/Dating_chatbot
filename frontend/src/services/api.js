@@ -13,7 +13,12 @@ import axios from 'axios';
 // In local dev, automatically uses the current hostname (localhost or LAN IP like 192.168.x.x) on port 8000
 const getBaseUrl = () => {
   if (import.meta.env.VITE_API_BASE_URL !== undefined) {
-    return import.meta.env.VITE_API_BASE_URL;
+    let base = (import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '');
+    // Automatically route through /gradio_api if target is a Hugging Face Space
+    if (base.includes('hf.space') && !base.endsWith('/gradio_api')) {
+      base = `${base}/gradio_api`;
+    }
+    return base;
   }
   if (typeof window !== 'undefined') {
     const host = window.location.hostname || '';
