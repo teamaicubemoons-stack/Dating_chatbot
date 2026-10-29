@@ -17,6 +17,10 @@ const getBaseUrl = () => {
   }
   if (typeof window !== 'undefined') {
     const host = window.location.hostname || '';
+    // If accessing via Hugging Face Space (ZeroGPU / Gradio iframe), route API requests through /gradio_api
+    if (host.includes('hf.space') || host.includes('huggingface.co') || window.location.pathname.startsWith('/gradio_api')) {
+      return '/gradio_api';
+    }
     // If accessing via ngrok, Cloudflare tunnel, or remote domain, use relative path so Vite proxies to backend port 8000
     if (host.includes('ngrok') || host.includes('trycloudflare') || host.includes('loca.lt')) {
       return '';

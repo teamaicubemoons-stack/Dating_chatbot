@@ -17,7 +17,7 @@ import re
 import uuid
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.personas.persona_loader import (
@@ -38,19 +38,23 @@ router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 
 @router.get("", response_model=List[ProfileSummary])
-def list_profiles():
+def list_profiles(request: Request):
     """
     Return a lightweight list of all available persona profiles.
     Used by the frontend HomePage to render the profile card grid.
     """
+    is_gradio_api = request.url.path.startswith("/gradio_api")
     personas = load_all_personas()
     summaries = []
     for p in personas:
+        av = p.get("avatar_url", "")
+        if is_gradio_api and av.startswith("/avatars/"):
+            av = f"/gradio_api{av}"
         summaries.append(ProfileSummary(
             id=p["id"],
             name=p["name"],
             short_bio=p.get("short_bio", ""),
-            avatar_url=p.get("avatar_url", ""),
+            avatar_url=av,
             country=p.get("country", ""),
             city=p.get("city", ""),
             age=p.get("age"),
@@ -61,14 +65,18 @@ def list_profiles():
 
 
 @router.get("/{profile_id}", response_model=ProfileDetail)
-def get_profile(profile_id: str):
+def get_profile(profile_id: str, request: Request):
     """
     Return full public profile info for a specific persona.
     Private fields (system_prompt_template, style rules) are excluded.
     """
     try:
+        is_gradio_api = request.url.path.startswith("/gradio_api")
         persona = load_persona(profile_id)
         public = get_public_persona_info(persona)
+        av = public.get("avatar_url", "")
+        if is_gradio_api and av.startswith("/avatars/"):
+            av = f"/gradio_api{av}"
         return ProfileDetail(
             id=public["id"],
             name=public["name"],
@@ -77,7 +85,7 @@ def get_profile(profile_id: str):
             country=public.get("country", ""),
             city=public.get("city", ""),
             short_bio=public.get("short_bio", ""),
-            avatar_url=public.get("avatar_url", ""),
+            avatar_url=av,
             personality_traits=public.get("personality_traits", []),
             tone=public.get("tone", ""),
             relationship_intent=public.get("relationship_intent", ""),
